@@ -233,7 +233,7 @@ debugLevelSelect.onchange = (e) => {
     let chosen = parseInt(e.target.value);
     if (chosen === 4) {
         level = 3;
-        score = 900;
+        score = 1100;
         triggerBossIntro();
     } else {
         bossTriggered = false;
@@ -333,6 +333,7 @@ let achievementsDB = {
     vacuum_cleaner: { name: "Пылесос.", desc: "Хотя нет, пылесос отдыхает, ты подмела вообще ВСЁ..", unlocked: false, secretDesc: "Секретное достижение! Подсказки не будет, мне лень.", rewardSkin: "bunny" },
     boss_slayer: { name: "Драконоубийца", desc: "Кстати первоначально заместь дракона должен был быть Путин.", unlocked: false, secretDesc: "Секретное достижение! Что произойдет после третьего уровня?", rewardSkin: "sun" }
 };
+
 
 // спрайты
 const images = {};
@@ -2081,7 +2082,7 @@ function spawnBossLevelItem() {
 }
 
 function renderGame(isUpdating) {
-    if (isUpdating && level === 3 && score >= 900 && !bossTriggered) {
+    if (isUpdating && level === 3 && score >= 1100 && !bossTriggered) {
         triggerBossIntro();
     }
 
