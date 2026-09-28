@@ -253,19 +253,19 @@ const levelSettings = {
     1: { minScore: 0, speed: 1.0, title: "Уровень 1" },
     2: { minScore: 300, speed: 1.18, title: "Уровень 2" },
     3: { minScore: 600, speed: 1.35, title: "Уровень 3" },
-    4: { minScore: 1000, speed: 1.4, title: "Босс" }
+    4: { minScore: 1100, speed: 1.4, title: "Босс" }
 };
 
 // предметы
 let itemsDB = {
-    star: { name: "Звезда", desc: "Даёт +1 очко и сияет (но не ярче тебя, конечно ★).", unlocked: false },
+    star: { name: "Звезда", desc: "Даёт +1 очко и сияет (но не ярче тебя, конечно).", unlocked: false },
     icestar: { name: "Ледяная звезда", desc: "Звездочка 2 уровня~★ +2 очка.", unlocked: false },
     goldenStar: { name: "Золотая звезда", desc: "Звездочка 3 уровня~★ +3 очка.", unlocked: false },
-    bomb: { name: "Бомба", desc: "ВЗРЫВООПАСНО!!! – 1 сердечко.", unlocked: false },
+    bomb: { name: "Бомба", desc: "ВЗРЫВООПАСНО!!! –1 сердечко.", unlocked: false },
     fire: { name: "Огонёк", desc: "Как бомбочка, но зимняя. -1 хп.", unlocked: false },
     knife: { name: "Нож", desc: "Зачем он здесь, если пирог уже нарезанный???.. -2 хп.", unlocked: false },
     coin: { name: "Монетка", desc: "Мани мани мани, маст би фанни.. +1 к балансу в кошельке.", unlocked: false },
-    silverCoin: { name: "Серебряная монета", desc: "Выглядит дороже, чем стоит.. +2 монетки.", unlocked: false },
+    silverCoin: { name: "Серебряная монета", desc: "Серебро настолько чистое, что отогнало всех вампиров с игры. +2 монетки.", unlocked: false },
     goldenCoin: { name: "Золотая монета", desc: "Альо, да-да, речь идёт о трёхзначных суммах... +3 монетки.", unlocked: false },
     pepper: { name: "Острый перец", desc: "+5 очков, НО ускоряет и увеличивает бомбы. Выбор за тобой)))", unlocked: false },
     cucumber: { name: "Огурец", desc: "-2 очка. Буся НЕ ОДОБРЯЕТ (кот отпрыгивает).", unlocked: false },
@@ -279,14 +279,14 @@ let itemsDB = {
     gingerbread: { name: "Пряник", desc: "+5 очков и щит, защищающий от одного огонька 💋", unlocked: false },
     mistletoe: { name: "Омела", desc: "Предлагаю воплотить в жизнь кое какую традицию, связанную с этой ягодкой)))) +2 очка, притягивает хорошие предметы.", unlocked: false },
     candyCane: { name: "Леденец", desc: "+3 очка, если поймать несколько вподряд - каждая следующая еда (и хорошая, и плохая) увеличивает свой эффект в два раза.", unlocked: false },
-    apple: { name: "Яблоко", desc: "И я сейчас не про айфон!! +2 очка, + 2x очков на 6 секунд.", unlocked: false },
+    apple: { name: "Яблоко", desc: "И я сейчас не про айфон!! +2 очка, + 2x мультипликатор на 6 секунд.", unlocked: false },
     coffee: { name: "Кофе", desc: "Гав на лавандовом. +5 очков, ускоряет котика.", unlocked: false },
     pie: { name: "Пирог.... ириско-коричный?", desc: "Разлетается на 3-5 случайных хороших предметов. Козломама в восторге!", unlocked: false },
-    mapleLeaf: { name: "Кленовый листочек", desc: "Сдувает нахуй все плохие предметы!!! +4 очка.", unlocked: false },
+    mapleLeaf: { name: "Кленовый листочек", desc: "Сдувает все плохие предметы!!! +4 очка.", unlocked: false },
     ring: { name: "Колечко, колечко, кольцо...", desc: "Упс, я забыла, что ты УЖЕ моя жена..", unlocked: false },
-    remoteController: { name: "Джойстик", desc: "АРКАДИЙ ПАРОВОЗОВ летит на помощь обнулять набранный от перчиков эффект!", unlocked: false },
+    remoteController: { name: "Джойстик", desc: "Обнуляет набранный от перчиков эффект. Почему джойстик??? я сама хз", unlocked: false },
     heart: { name: "Сердечко", desc: "Падает редко шо пиздец, но лечит жизни. +1 сердечко.", unlocked: false },
-    gift: { name: "Новогодний подарочек", desc: "Открывает уникальный скин. Падает только на втором уровне и один раз на игру~", unlocked: false },
+    gift: { name: "Новогодний подарочек", desc: "Открывает уникальный скин.. Падает только на втором уровне и один раз на игру~", unlocked: false },
     hourglass: { name: "Песочные часы", desc: "Это ЧТО, временной парадокс?!?!", unlocked: false, type: "time_hourglass" },
     poptart: { name: "Поп-тарт", desc: "AMERICAN печенька с радужной аурой.", unlocked: false, type: "nyan_poptart" },
     gun: { name: "Пистолет", desc: "Время пострелять между нами пау пау ой", unlocked: false, type: "cyber_gun" },
@@ -2609,7 +2609,7 @@ function renderGame(isUpdating) {
             else                       { newItem.type = "goldenStar"; newItem.points = 3; }
         } 
         else if (level === 2) {
-            if (typeRand < 0.002)      { newItem.type = "gift"; newItem.points = 20; }    
+            if (typeRand < 0.0008)      { newItem.type = "gift"; newItem.points = 20; }    
             else if (typeRand < 0.004) { newItem.type = "remoteController"; newItem.points = 0; }
             else if (typeRand < 0.007) { newItem.type = "ring"; newItem.points = 8; } 
             else if (typeRand < 0.017) { newItem.type = "gun"; newItem.points = 0; }  
