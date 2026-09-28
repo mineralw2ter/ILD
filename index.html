@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>котикииии</title>
+    <title>ILD</title>
+    <meta name="description" content="Ich liebe dich" />
+    <meta property="og:title" content="котикииии" />
+    <meta property="og:description" content="мяу мяу" />
     <style>
         @font-face {
             font-family: 'ouroboros';
@@ -17,32 +20,324 @@
         }
         canvas { display: block; touch-action: none; }
         .font-preloader { position: absolute; opacity: 0; pointer-events: none; font-family: 'ouroboros'; }
+
+        #pause-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .settings-group {
+            background: #ff85a2;
+            padding: 25px;
+            border-radius: 20px;
+            text-align: center;
+            width: 80%;
+            max-width: 280px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+        .slider-container { margin: 15px 0; color: white; }
+        input[type=range] { width: 100%; accent-color: white; margin-top: 5px; }
+        .pause-btn {
+            display: block; width: 100%; margin-top: 12px;
+            padding: 12px; background: white; color: #ff85a2;
+            border: none; border-radius: 12px; font-family: 'ouroboros';
+            font-size: 18px; cursor: pointer;
+        }
+        #debug-menu {
+            position: absolute;
+            top: 10px; left: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px; border-radius: 10px;
+            display: none; flex-direction: column;
+            z-index: 9999; border: 1px solid #ffed00;
+        }
+        .debug-row { margin: 5px 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
+        .debug-btn { padding: 5px; background: #444; color: white; border: 1px solid #777; font-family: sans-serif; cursor: pointer; }
     </style>
 </head>
 <body>
 <div class="font-preloader">котики прелоад</div>
 <canvas id="game"></canvas>
 
+<div id="pause-overlay">
+    <div class="settings-group">
+        <h2 style="margin:0 0 10px 0">Пауза</h2>
+        <div class="slider-container">
+            <label>Музыка 🎵</label>
+            <input type="range" id="musicVol" min="0" max="1" step="0.1">
+        </div>
+        <div class="slider-container">
+            <label>Звуки 🔊</label>
+            <input type="range" id="sfxVol" min="0" max="1" step="0.1">
+        </div>
+        <button class="pause-btn" onclick="resumeGame()">Продолжить</button>
+        <button class="pause-btn" style="background:#ffb7c5" onclick="goToMenu()">В меню</button>
+    </div>
+</div>
+
+<div id="debug-menu">
+    <div style="color: #ffed00; font-weight: bold; margin-bottom: 10px; text-align: center;">DEV TOOLS</div>
+    <div class="debug-row">
+        <span>Бессмертие:</span>
+        <input type="checkbox" id="godMode">
+    </div>
+    <div class="debug-row">
+        <span>Скорость:</span>
+        <input type="range" id="debugSpeed" min="0.1" max="5" step="0.1" value="1">
+    </div>
+    <div class="debug-row">
+        <span>Уровень:</span>
+        <select id="debugLevel">
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">Босс</option>
+        </select>
+    </div>
+    <button class="debug-btn" onclick="document.getElementById('debug-menu').style.display='none'">Закрыть</button>
+</div>
+
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const pauseOverlay = document.getElementById("pause-overlay");
 
-// --- Настройки ---
-const levelSettings = {
-    1: { minScore: 0, speed: 1.0, title: "Уровень 1" },
-    2: { minScore: 100, speed: 1.25, title: "Уровень 2" },
-    3: { minScore: 250, speed: 1.5, title: "Уровень 3" },
-    4: { minScore: 400, speed: 1.75, title: "Уровень 4" },
-    5: { minScore: 600, speed: 2.0, title: "Уровень 5" },
-    6: { minScore: 800, speed: 2.25, title: "Уровень 6" },
-    7: { minScore: 1000, speed: 2.50, title: "Уровень 7" }
+// коробка
+let isOpeningBox = false;
+let boxScale = 1.0;
+let boxClickCount = 0;
+let dropTimer = 0;
+let rolledSkinKey = null;
+let rewardModal = null;
+
+// кибер мод
+let isCyberMode = false;
+let autoShootInterval = null;
+let cyberTimer = null;
+let cyberTimeLeft = 0;
+
+// тайм парадокс
+let isTimeParadox = false;
+let timeParadoxTimer = null;
+let timeParadoxLeft = 0;
+let clockHandAngle = 0;
+
+// нян мод
+const nyanRainbowColors = ["#ff0000", "#ff7f00", "#ffff00", "#00ff00", "#0099ff", "#660099"];
+let isNyanMode = false;
+let nyanTimer = null;
+let nyanTimeLeft = 0;
+let nyanCount = 0;
+
+// глитч мод
+let isGlitchMode = false;
+let glitchTimer = null;
+let glitchTimeLeft = 0;
+let glitchPopups = [];
+
+// грозовой мод
+let isThunderstormMode = false;
+let thunderstormTimer = null;
+let thunderstormTimeLeft = 0;
+let thunderstormHit = false;
+let lightningStrikes = [];
+let nextStrikeTimer = 0;
+
+// зонтик мод
+let isUmbrellaMode = false;
+let umbrellaTimer = null;
+let umbrellaTimeLeft = 0;
+let umbrellaPlatforms = [];
+let catVy = 0;
+
+// зима
+let hasShield = false;
+let magnetTimer = 0;
+let candyStreak = 0;
+let candyMultiplierTimer = 0;
+let freezeTimer = 0;
+let freezeIntensity = 0;
+
+// осень
+let appleTimer = 0;
+let coffeeTimer = 0;
+let jamTimer = 0;
+let activePumpkin = null;
+
+// ачивки
+let achievementQueue = [];
+let currentAchievementPopup = null;
+let achievementPopupTimer = 0;
+let visitedModes = { nyan: false, cyber: false, time: false, glitch: false };
+
+// босс и катсцены
+let bossTriggered = false;
+let bossCutscenePhase = null; // null | 'freeze' | 'popped' | 'dialog1' | 'flash' | 'dialog2' | 'battle'
+let bossCutsceneTimer = 0;
+let bossDialogIndex = 0;
+let flashAlpha = 0;
+let catDisappeared = false;
+const dialog1Texts = [
+    "«Вот это да!»",
+    "«Кажется, ты прошла все 3 уровня! Бог любит троицу.»",
+    "«А знаешь, кто её НЕ любит????»",
+    "«ФИНАЛЬНЫЙ БОООООСС!!!!!!»"
+];
+const dialog2Texts = [
+    "«Честно говоря, я сюжет делать не собиралась, поэтому сама хз откуда тут этот босс, но тебе придётся его победить!»",
+    "«Как говорил создатель Дума – сюжет в шутере это как сюжет в порнофильме, он типа есть, но он никому нахуй не сдался.»"
+];
+
+// босс битва
+const BOSS_MAX_HP = 240;
+let bossHp = BOSS_MAX_HP;
+let bossPhase = 1; // 1, 2, 3
+let bossHitFlashTimer = 0;
+let phaseChangeBanner = null; // { text: "ФАЗА 2", timer: 120 }
+let bossDefeated = false;
+let bossGunCooldown = 0;
+
+// прочее
+let currentTab = "items";
+let collectionPage = 1;
+let waveCooldown = 700 + Math.floor(Math.random() * 400);
+let currentSkin = "cat";
+let targetCatX = null;
+let targetCatY = null;
+let hasContinued = false;
+let proposalBannerTimer = 0;
+let coins = 0;
+let catRedFlashTimer = 0;
+let floatingTexts = [];
+let sparkParticles = [];
+let catTrail = [];
+let bullets = [];
+
+// дэв тулс
+const DEV_HOLD_TIME = 3000;
+let debugSpeedMult = 1.0;
+let devHoldTimer = null;
+let isGodMode = false;
+
+const debugMenu = document.getElementById('debug-menu');
+const godModeCheck = document.getElementById('godMode');
+const debugSpeedSlider = document.getElementById('debugSpeed');
+const debugLevelSelect = document.getElementById('debugLevel');
+
+godModeCheck.onchange = (e) => isGodMode = e.target.checked;
+debugSpeedSlider.oninput = (e) => debugSpeedMult = parseFloat(e.target.value);
+debugLevelSelect.onchange = (e) => {
+    let chosen = parseInt(e.target.value);
+    if (chosen === 4) {
+        level = 3;
+        score = 900;
+        triggerBossIntro();
+    } else {
+        bossTriggered = false;
+        bossCutscenePhase = null;
+        catDisappeared = false;
+        bossHp = BOSS_MAX_HP;
+        bossPhase = 1;
+        bossGunCooldown = 0;
+        level = chosen;
+        score = levelSettings[level].minScore;
+        updateModeMusic();
+    }
 };
 
+// уровни
+const levelSettings = {
+    1: { minScore: 0, speed: 1.0, title: "Уровень 1" },
+    2: { minScore: 300, speed: 1.18, title: "Уровень 2" },
+    3: { minScore: 600, speed: 1.35, title: "Уровень 3" },
+    4: { minScore: 1000, speed: 1.4, title: "Босс" }
+};
+
+// предметы
+let itemsDB = {
+    star: { name: "Звезда", desc: "Даёт +1 очко и сияет (но не ярче тебя, конечно ★).", unlocked: false },
+    icestar: { name: "Ледяная звезда", desc: "Звездочка 2 уровня~★ +2 очка.", unlocked: false },
+    goldenStar: { name: "Золотая звезда", desc: "Звездочка 3 уровня~★ +3 очка.", unlocked: false },
+    bomb: { name: "Бомба", desc: "ВЗРЫВООПАСНО!!! – 1 сердечко.", unlocked: false },
+    fire: { name: "Огонёк", desc: "Как бомбочка, но зимняя. -1 хп.", unlocked: false },
+    knife: { name: "Нож", desc: "Зачем он здесь, если пирог уже нарезанный???.. -2 хп.", unlocked: false },
+    coin: { name: "Монетка", desc: "Мани мани мани, маст би фанни.. +1 к балансу в кошельке.", unlocked: false },
+    silverCoin: { name: "Серебряная монета", desc: "Выглядит дороже, чем стоит.. +2 монетки.", unlocked: false },
+    goldenCoin: { name: "Золотая монета", desc: "Альо, да-да, речь идёт о трёхзначных суммах... +3 монетки.", unlocked: false },
+    pepper: { name: "Острый перец", desc: "+5 очков, НО ускоряет и увеличивает бомбы. Выбор за тобой)))", unlocked: false },
+    cucumber: { name: "Огурец", desc: "-2 очка. Буся НЕ ОДОБРЯЕТ (кот отпрыгивает).", unlocked: false },
+    snowflake: { name: "Снежинка", desc: "-2 очка, замораживает экранчик!", unlocked: false },
+    pumpkin: { name: "Тыква", desc: "Падает со скоростью 3*10⁸ м/с. Если успеешь поймать – +15 монеток, а если нет – преграждает путь и отнимает одно хп.", unlocked: false },
+    appleJam: { name: "Яблочный джем", desc: "Замедляет котика на 3 секунды, +6 очков.", unlocked: false },
+    fish: { name: "Скумбрия серебристая", desc: "Твой родственник))))))))) Дает +2 очка.", unlocked: false },
+    milk: { name: "Молочко", desc: "Замедляет бомбочки на время. +3 очка.", unlocked: false },
+    can: { name: "Консерва", desc: "Нямнямням... +4 очка. Увеличивает всю хорошую еду на время.", unlocked: false },
+    christmasTree: { name: "Ёлка", desc: "С НОВЫМ ГОДОМ, С НОВЫМ СЧАСТЬЕМ!!★ И что, что сейчас ещё август?? +5 очков, убирает все огоньки на экране.", unlocked: false },
+    gingerbread: { name: "Пряник", desc: "+5 очков и щит, защищающий от одного огонька 💋", unlocked: false },
+    mistletoe: { name: "Омела", desc: "Предлагаю воплотить в жизнь кое какую традицию, связанную с этой ягодкой)))) +2 очка, притягивает хорошие предметы.", unlocked: false },
+    candyCane: { name: "Леденец", desc: "+3 очка, если поймать несколько вподряд - каждая следующая еда (и хорошая, и плохая) увеличивает свой эффект в два раза.", unlocked: false },
+    apple: { name: "Яблоко", desc: "И я сейчас не про айфон!! +2 очка, + 2x очков на 6 секунд.", unlocked: false },
+    coffee: { name: "Кофе", desc: "Гав на лавандовом. +5 очков, ускоряет котика.", unlocked: false },
+    pie: { name: "Пирог.... ириско-коричный?", desc: "Разлетается на 3-5 случайных хороших предметов. Козломама в восторге!", unlocked: false },
+    mapleLeaf: { name: "Кленовый листочек", desc: "Сдувает нахуй все плохие предметы!!! +4 очка.", unlocked: false },
+    ring: { name: "Колечко, колечко, кольцо...", desc: "Упс, я забыла, что ты УЖЕ моя жена..", unlocked: false },
+    remoteController: { name: "Джойстик", desc: "АРКАДИЙ ПАРОВОЗОВ летит на помощь обнулять набранный от перчиков эффект!", unlocked: false },
+    heart: { name: "Сердечко", desc: "Падает редко шо пиздец, но лечит жизни. +1 сердечко.", unlocked: false },
+    gift: { name: "Новогодний подарочек", desc: "Открывает уникальный скин. Падает только на втором уровне и один раз на игру~", unlocked: false },
+    hourglass: { name: "Песочные часы", desc: "Это ЧТО, временной парадокс?!?!", unlocked: false, type: "time_hourglass" },
+    poptart: { name: "Поп-тарт", desc: "AMERICAN печенька с радужной аурой.", unlocked: false, type: "nyan_poptart" },
+    gun: { name: "Пистолет", desc: "Время пострелять между нами пау пау ой", unlocked: false, type: "cyber_gun" },
+    cursor: { name: "Курсор", desc: "Никогда не жми на кнопку «скачать торрент» в три часа ночи...", unlocked: false, type: "glitch_cursor" },
+    lightning: { name: "Молния", desc: "Щас как шандарахнет айяйяяяй.", unlocked: false },
+    umbrella: { name: "Зонтик", desc: "Теперь ты Мэри Поппинс)))", unlocked: false }
+};
+
+// скины
+let skinsDB = {
+    cat: { name: "Обычный котик", desc: "Классический первоначальный серобелый котик.", unlocked: true, isSkin: true, weight: 100, boxSkin: true },
+    pinkCat: { name: "Гламурный котик", desc: "Напоминает мне кое какую розовую кошкодевочку...", unlocked: false, isSkin: true, weight: 100, boxSkin: true },
+    whiteCat: { name: "Белый котик", desc: "Белый котик с гетерохромией.", unlocked: false, isSkin: true, weight: 100, boxSkin: true },
+    blackCat: { name: "Котёнок-негритёнок", desc: "Помнишь, какие у негра есть три белых вещи?", unlocked: false, isSkin: true, weight: 100, boxSkin: true },
+    redCat: { name: "Ржавый котик", desc: "Он красный или рыжий???", unlocked: false, isSkin: true, weight: 100, boxSkin: true },
+    greyCat: { name: "Серый котик", desc: "Увольте меня я заебалась придумывать названия", unlocked: false, isSkin: true, weight: 100, boxSkin: true },
+    gingerCat: { name: "Рыжий котик", desc: "Когда уже эти описания закончаца...", unlocked: false, isSkin: true, weight: 100, boxSkin: true },
+    calicoCat: { name: "Трёхцветный котик", desc: "desc", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    siameseCat: { name: "Сиамский котик", desc: "хэлп", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    blackWhiteCat: { name: "Чёрно-белый котик", desc: "я щас на луну завою", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    gingerWhiteCat: { name: "Рыже-белый котик", desc: "сос", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    idkCat: { name: "Хз", desc: "я не придумала", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    idk2Cat: { name: "Пиздося", desc: "аааа", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    busyaCat: { name: "Буся", desc: "Представь что здесь супер реалистичная Буся, оки??", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    rainbowCat: { name: "ЛГБТК+ котик", desc: "ЗАПРЕЩЕНО НА ТЕРРИТОРИИ РФ!!!!", unlocked: false, isSkin: true, weight: 80, boxSkin: true },
+    nyanCat: { name: "Нян-кэт", desc: "Нянянянняняняняня :3", unlocked: false, isSkin: true, weight: 0 },
+    deer: { name: "Оленёнок", desc: "Deer фор май dear 💋", unlocked: false, isSkin: true, weight: 0 },
+    fox: { name: "Лисичка", desc: "пумпуруруру", unlocked: false, isSkin: true, weight: 0 },
+    bunny: { name: "Кролик", desc: "сорре козочки не нашла ХЕХЕХЕХЕХ", unlocked: false, isSkin: true, weight: 0 },
+    sun: { name: "Солнышко", desc: "Я хотела провести аналогию с тобой, но я это уже сделала в описании со звёздочкой..", unlocked: false, isSkin: true, weight: 0 }
+};
+
+// ачивки
+let achievementsDB = {
+    first_step: { name: "Начало", desc: "Прости, сладкая, не придумала оригинального описания для этого достижения, люблю тебя 💋💋", unlocked: false, secretDesc: "Заработайте 10 очков за одну игру.!!" },
+    rich_cat: { name: "Мамкин бизнесмен", desc: "Закрываю ИП открываю ООО покупаю бассейн и новый офис с коридором", unlocked: false, secretDesc: "Получите 50 монеток." },
+    cyber_shooter: { name: "Киберпау-пау", desc: "Время пострелять между нами пау пау попа попа попадаешь в сердце иии ой", unlocked: false, secretDesc: "Поймайте пистолетик" },
+    time_master: { name: "Zyferblat", desc: "Тик так на часааах ровно полноч время приступать.)", unlocked: false, secretDesc: "Поймайте песочные часы и устройте ПАРАДОКС!!!" },
+    windows_error: { name: "System message", desc: "Critical error", unlocked: false, secretDesc: "Поймайте...... курсор" },
+    the_four: { name: "Шестёрка число некрасивое", desc: "Даже не придумать никакого прикола по поводу этого числа...", unlocked: false, secretDesc: "Поймайте все предметы модов." },
+    nyan_lover: { name: "НЯмНЯмНЯм", desc: "НЯНЯНЯНЯННЯНЯНЯНЯ", unlocked: false, secretDesc: "Секретное достижение! Нужно сделать кое что много раз...", rewardSkin: "nyanCat" },
+    happy_NY: { name: "С Новым Годом!", desc: "Ты не представляешь, насколько мизерный шанс выпадения этого предмета...", unlocked: false, secretDesc: "Секретное достижение! Получите подарочек.", rewardSkin: "deer" },
+    casino: { name: "Казино всегда в плюсе", desc: "Боюсь представить, сколько монет ты потратила...", unlocked: false, secretDesc: "Секретное достижение! Открыть все скины из коробки.", rewardSkin: "fox" },
+    vacuum_cleaner: { name: "Пылесос.", desc: "Хотя нет, пылесос отдыхает, ты подмела вообще ВСЁ..", unlocked: false, secretDesc: "Секретное достижение! Подсказки не будет, мне лень.", rewardSkin: "bunny" },
+    boss_slayer: { name: "Драконоубийца", desc: "Кстати первоначально заместь дракона должен был быть Путин.", unlocked: false, secretDesc: "Секретное достижение! Что произойдет после третьего уровня?", rewardSkin: "sun" }
+};
+
+// спрайты
 const images = {};
 const imgSources = {
-    cat: 'cat.png', star: 'star.png', bomb: 'bomb.png', fish: 'fish.png',
-    heart: 'heart.png', pepper: 'pepper.png', milk: 'milk.png', cucumber: 'cucumber.png',
-    can: 'can.png' 
+    cat: 'cat.png', star: 'star.png', bomb: 'bomb.png', fish: 'fish.png', heart: 'heart.png', pepper: 'pepper.png', milk: 'milk.png', cucumber: 'cucumber.png', can: 'can.png', coin: 'coin.png', pinkCat: 'pink_cat.png', blackCat: 'black_cat.png', whiteCat: 'white_cat.png', redCat: 'red_cat.png', rainbowCat: 'rainbow_cat.png', busyaCat: 'busya_cat.png', siameseCat: 'siamese_cat.png', gingerCat: 'ginger_cat.png', greyCat: 'grey_cat.png', calicoCat: 'calico_cat.png', blackWhiteCat: 'black-white_cat.png', gingerWhiteCat: 'ginger-white_cat.png', idkCat: 'idk_cat.png', idk2Cat: 'idk2_cat.png', nyanCat: 'nyan_cat.png', box: 'box.png', gun: 'gun.png', hourglass: 'hourglass.png', poptart: 'poptart.png', icestar: 'ice_star.png', deer: 'deer.png', gift: 'gift.png', ring: 'ring.png', silverCoin: 'silver_coin.png', christmasTree: 'christmas_tree.png', mistletoe: 'mistletoe.png', gingerbread: 'gingerbread.png', snowflake: 'snowflake.png', candyCane: 'candy_cane.png', fire: 'fire.png', fox: 'fox.png', bunny: 'bunny.png', cursor: 'cursor.png', zyferblat: 'zyferblat.png', clockhand: 'clockhand.png', freeze_screen: 'freeze_screen.png', cloud: 'cloud.png', shield: 'shield.png', snowdrifts: 'snowdrifts.png', remoteController: 'remote_controller.png', goldenStar: 'golden_star.png', knife: 'knife.png', goldenCoin: 'golden_coin.png', coffee: 'coffee.png', apple: 'apple.png', appleJam: 'apple_jam.png', pie: 'cake.png', mapleLeaf: 'maple_leaf.png', pumpkin: 'pumpkin.png', sun: 'sun.png', spiderWeb: 'spiderWeb.png', lightning: 'lightning.png', umbrella: 'umbrella.png', boss: 'boss.png', sun: 'sun.png'
 };
 const loadedImages = {};
 for (let key in imgSources) {
@@ -51,61 +346,696 @@ for (let key in imgSources) {
     images[key].onload = () => { loadedImages[key] = true; };
 }
 
-// --- Звуки ---
-const bgMusic = new Audio('music.mp3');
-bgMusic.loop = true;
-bgMusic.volume = 0.5;
+// аудио (УЧЕНЫЕ ЗАПИСАЛИ ЗВУКИ ИЗ АДА!!!!)
+let bgMusic = new Audio('music.mp3'); bgMusic.loop = true;
+const sndWinterBg = new Audio('winter.mp3'); sndWinterBg.loop = true;
+const sndAutumnBg = new Audio('autumn.mp3'); sndAutumnBg.loop = true;
+const sndCyberBg = new Audio('cyber.mp3'); sndCyberBg.loop = true;
+const sndTimeBg = new Audio('time.mp3'); sndTimeBg.loop = true;
+const sndNyanBg = new Audio('nyan_music.opus'); sndNyanBg.loop = true;
+const sndGlitchBg = new Audio('glitch.mp3'); sndGlitchBg.loop = true;
+const sndBossBg = new Audio('boss.mp3'); sndBossBg.loop = true;
 
-const sndCollect = new Audio('collect.mp3');
-const sndBurn = new Audio('burn.mp3');
-const sndExplode = new Audio('explosion.mp3');
+const sndCollect = new Audio('collect.wav');
+const sndWinterCollect = new Audio('WINTERcollect.wav');
+const sndAchievement = new Audio('achievement.wav');
+const sndBurn = new Audio('burn.wav');
+const sndExplode = new Audio('explosion.wav');
+const sndJump = new Audio('jump.wav');
+const sndShot = new Audio('shot.wav');
+const sndBoom = new Audio('boom.wav');
+const sndClick = new Audio('click.wav');
+const sndCoin = new Audio('coin.wav');
+const sndBuy = new Audio('buy.wav');
+const sndTap = new Audio('tap.wav');
+const sndMeow = new Audio('meow.wav');
+const sndExtraLife = new Audio('extraLife.wav');
+const sndPie = new Audio('pie.wav');
+const sndError = new Audio('error.wav');
+const sndThunder = new Audio('thunder.wav');
+const sndDisappearance = new Audio('disappearance.wav');
+const sndTransition = new Audio('transition.wav');
 
-// Громкость эффектов чуть ниже музыки
-sndCollect.volume = 0.3;
-sndBurn.volume = 0.3;
-sndExplode.volume = 0.4;
+let musicVolume = parseFloat(localStorage.getItem("musicVol")) || 0.4;
+let sfxVolume = parseFloat(localStorage.getItem("sfxVol")) || 0.25;
+let currentBgAudio = bgMusic;
+
+const allSnd = [sndCollect, sndWinterCollect, sndBurn, sndExplode, sndJump, sndClick, sndCoin, sndBuy, sndTap, sndBoom, sndShot, sndAchievement, sndMeow, sndPie, sndExtraLife, sndError, sndThunder, sndDisappearance, sndTransition];
+allSnd.forEach(s => s.volume = sfxVolume);
+
+const musicSlider = document.getElementById("musicVol");
+const sfxSlider = document.getElementById("sfxVol");
+musicSlider.value = musicVolume;
+sfxSlider.value = sfxVolume;
+
+musicSlider.oninput = (e) => {
+    musicVolume = parseFloat(e.target.value);
+    [bgMusic, sndWinterBg, sndAutumnBg, sndCyberBg, sndTimeBg, sndNyanBg, sndGlitchBg, sndBossBg].forEach(m => m.volume = musicVolume);
+    localStorage.setItem("musicVol", musicVolume);
+};
+sfxSlider.oninput = (e) => {
+    sfxVolume = parseFloat(e.target.value);
+    allSnd.forEach(s => s.volume = sfxVolume);
+    localStorage.setItem("sfxVol", sfxVolume);
+};
 
 function playSound(sound) {
-    if (!isMusicMuted) {
-        sound.currentTime = 0;
-        sound.play().catch(() => {});
+    try {
+        let clone = sound.cloneNode();
+        clone.volume = Math.min(1, sfxVolume * 0.7);
+        clone.play().catch(() => {});
+    } catch(e){}
+}
+
+let audioUnlocked = false;
+function unlockAudio() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    window.removeEventListener('click', unlockAudio);
+    window.removeEventListener('touchstart', unlockAudio);
+
+    const allAudio = [sndClick, sndCoin, sndBuy, sndTap, bgMusic, sndWinterBg, sndAutumnBg, sndCyberBg, sndTimeBg, sndNyanBg, sndGlitchBg, sndBossBg];
+    allAudio.forEach(s => { 
+        s.play().then(() => { 
+            if (s !== currentBgAudio || state !== "game") {
+                s.pause(); 
+                s.currentTime = 0; 
+            }
+        }).catch(()=>{}); 
+    });
+    if (state === "game") updateModeMusic();
+}
+window.addEventListener('click', unlockAudio);
+window.addEventListener('touchstart', unlockAudio);
+
+function getRandomSkinKey(isPity = false) {
+    const lockedBoxSkins = Object.keys(skinsDB).filter(key => skinsDB[key].boxSkin && !skinsDB[key].unlocked);
+    if (isPity && lockedBoxSkins.length > 0) {
+        return lockedBoxSkins[Math.floor(Math.random() * lockedBoxSkins.length)];
     }
+    const availableKeys = Object.keys(skinsDB).filter(key => {
+        const w = skinsDB[key].weight;
+        return w !== undefined ? w > 0 : true;
+    });
+    if (availableKeys.length === 0) return "cat";
+    let totalWeight = availableKeys.reduce((sum, key) => {
+        let w = skinsDB[key].weight !== undefined ? skinsDB[key].weight : 100;
+        if (skinsDB[key].unlocked) w = Math.max(5, Math.floor(w * 0.2));
+        return sum + w;
+    }, 0);
+    let randomNum = Math.random() * totalWeight;
+    for (let key of availableKeys) {
+        let weight = skinsDB[key].weight !== undefined ? skinsDB[key].weight : 100;
+        if (skinsDB[key].unlocked) weight = Math.max(5, Math.floor(weight * 0.2));
+        if (randomNum < weight) return key;
+        randomNum -= weight;
+    }
+    return availableKeys[0];
 }
 
 const cat = { x: 0, y: 0, w: 19, h: 17, scale: 4 };
 let W, H, dpr = window.devicePixelRatio || 1;
-let state = "menu", items = [], score = 0, highScore = 0;
-let level = 1, lives = 3, bombChaos = 1.0, milkTimer = 0, buffTimer = 0;
-let jumpLock = 0, jumpDir = 0, petals = [];
+let state = "menu", items = [], score = 0, highScore = 0, lastScore = 0, lastCoins = 0, pityCounter = 0;
+const PITY_LIMIT = 5;
+let level = 1, lives = 3, bombChaos = 1.0, milkTimer = 0, buffTimer = 0, scoreForNextCoin = 25;
+let jumpLock = 0, jumpDirX = 0, jumpDirY = 0, petals = [], nyanStars = [], clouds = [];
 let selectedItem = null;
-let isDragging = false, lastX = 0;
-let isMusicMuted = false;
+let isDragging = false, lastX = 0, lastY = 0;
 let showUpdateModal = false;
-
-let itemsDB = {
-    star: { name: "Звезда", desc: "Даёт +1 очко и сияет (но не ярче тебя, конечно).", unlocked: false },
-    fish: { name: "Рыбка", desc: "Дает +2 очка, Буся одобряет.", unlocked: false },
-    pepper: { name: "Острый перец", desc: "+5 очков, НО ускоряет и увеличивает бомбы. Выбор за тобой)))", unlocked: false },
-    heart: { name: "Сердечко", desc: "Падает редко шо пиздец, но лечит жизни. +1 сердечко.", unlocked: false },
-    bomb: { name: "Бомба", desc: "ВЗРЫВООПАСНО!!! – 1 сердечко.", unlocked: false }, 
-    milk: { name: "Молочко", desc: "Замедляет бомбочки на время. +3 очка.", unlocked: false },
-    cucumber: { name: "Огурец", desc: "-2 очка. Буся НЕ ОДОБРЯЕТ (кот отпрыгивает).", unlocked: false },
-    can: { name: "Консерва", desc: "+4 очка. Увеличивает всю хорошую еду на время.", unlocked: false }
-};
 
 try {
     let savedDB = JSON.parse(localStorage.getItem("catCollection"));
-    if (savedDB) {
-        for (let key in savedDB) { if (itemsDB[key]) itemsDB[key].unlocked = savedDB[key]; }
+    if (savedDB) { 
+        for (let key in savedDB) { 
+            if (itemsDB && itemsDB[key]) itemsDB[key].unlocked = savedDB[key]; 
+        } 
     }
-    highScore = parseInt(localStorage.getItem("catHighScore")) || 0;
-} catch(e) { console.log("Ошибка данных"); }
+    let savedSkins = JSON.parse(localStorage.getItem("catSkinsCollection"));
+    if (savedSkins) { 
+        for (let key in savedSkins) { 
+            if (skinsDB && skinsDB[key]) skinsDB[key].unlocked = savedSkins[key]; 
+        } 
+    }
+    let savedAchievements = JSON.parse(localStorage.getItem("catAchievementsCollection"));
+    if (savedAchievements) { 
+        for (let key in savedAchievements) { 
+            if (achievementsDB && achievementsDB[key]) achievementsDB[key].unlocked = savedAchievements[key]; 
+        } 
+    }
+    pityCounter = parseInt(localStorage.getItem('catPityCounter'), 10) || 0;
+    highScore = parseInt(localStorage.getItem("catHighScore"), 10) || 0;
+    nyanCount = parseInt(localStorage.getItem("catNyanCount"), 10) || 0;
+    coins = parseInt(localStorage.getItem("catCoins"), 10) || 0;
+    currentSkin = localStorage.getItem("catCurrentSkin") || "cat";
+    if (skinsDB && !skinsDB[currentSkin]) currentSkin = "cat";
+    lastCoins = coins;
+} catch (e) { 
+    console.warn("Ошибка загрузки данных из localStorage:", e); 
+}
+
+function saveGame() {
+    localStorage.setItem("catCoins", coins);
+    localStorage.setItem("catPityCounter", pityCounter);
+}
+
+function triggerGameOver() {
+    if (score > highScore) { 
+        highScore = score; 
+        localStorage.setItem("catHighScore", highScore); 
+    } 
+    state = "gameover";
+    stopAllBgMusic();
+    if (isCyberMode) deactivateCyberMode();
+    if (isTimeParadox) deactivateTimeParadox();
+    if (isNyanMode) deactivateNyanMode();
+    if (isGlitchMode) deactivateGlitchMode();
+    if (isThunderstormMode) deactivateThunderstormMode();
+    if (isUmbrellaMode) deactivateUmbrellaMode();
+}
+
+function shootBullet() {
+    if (isNyanMode) {
+        bullets.push({ x: cat.x + (cat.w * cat.scale) / 2, y: cat.y, vx: 12, vy: 0, radius: 4 });
+    } else {
+        bullets.push({ x: cat.x, y: cat.y - (cat.h * cat.scale) / 2, vx: 0, vy: -12, radius: 4 });
+    }
+    let shotClone = sndShot.cloneNode();
+    shotClone.volume = Math.min(sfxVolume, 0.5);
+    shotClone.play().catch(() => {});
+}
+
+function unlockAchievement(id) {
+    if (!achievementsDB[id] || achievementsDB[id].unlocked) return;
+    achievementsDB[id].unlocked = true;
+    if (achievementsDB[id].rewardSkin && skinsDB[achievementsDB[id].rewardSkin]) {
+        skinsDB[achievementsDB[id].rewardSkin].unlocked = true;
+    }
+    saveCollection();
+    sndAchievement.volume = sfxVolume;
+    sndAchievement.currentTime = 0;
+    sndAchievement.play().catch(() => {});
+    achievementQueue.push(achievementsDB[id]);
+}
+
+function checkAchievements() {
+    if (score >= 10) unlockAchievement("first_step");
+    if (nyanCount >= 15) unlockAchievement("nyan_lover");
+    if (coins >= 50) unlockAchievement("rich_cat");
+    if (isCyberMode) unlockAchievement("cyber_shooter");
+    if (isTimeParadox) unlockAchievement("time_master");
+    if (isGlitchMode) unlockAchievement("windows_error");
+    if (itemsDB.poptart && itemsDB.hourglass && itemsDB.gun && itemsDB.cursor && itemsDB.lightning && itemsDB.umbrella &&
+        itemsDB.poptart.unlocked && itemsDB.hourglass.unlocked && itemsDB.gun.unlocked && itemsDB.cursor.unlocked && itemsDB.lightning.unlocked && itemsDB.umbrella.unlocked) {
+        unlockAchievement("the_four");
+    }
+    let allBoxSkinsUnlocked = Object.keys(skinsDB).filter(k => skinsDB[k].boxSkin).every(k => skinsDB[k].unlocked);
+    if (allBoxSkinsUnlocked) unlockAchievement("casino");
+    let allItemsUnlocked = Object.keys(itemsDB).every(k => itemsDB[k].unlocked);
+    if (allItemsUnlocked) unlockAchievement("vacuum_cleaner");
+}
+
+function drawAchievementNotification() {
+    if (!currentAchievementPopup && achievementQueue.length > 0) {
+        currentAchievementPopup = achievementQueue.shift();
+        achievementPopupTimer = 180;
+    }
+    if (currentAchievementPopup) {
+        achievementPopupTimer--;
+        let popupY = -70;
+        if (achievementPopupTimer > 150) popupY = -70 + (180 - achievementPopupTimer) * 3; 
+        else if (achievementPopupTimer < 30) popupY = 20 - (30 - achievementPopupTimer) * 3;
+        else popupY = 20;
+
+        const boxW = Math.min(W - 40, 300);
+        const boxX = (W - boxW) / 2;
+
+        ctx.save();
+        ctx.fillStyle = "rgba(20, 20, 20, 0.95)";
+        ctx.strokeStyle = "#ffed00";
+        ctx.lineWidth = 2;
+        ctx.fillRect(boxX, popupY, boxW, 60);
+        ctx.strokeRect(boxX, popupY, boxW, 60);
+
+        ctx.font = "24px 'ouroboros'";
+        ctx.textAlign = "left";
+        ctx.fillText("🏆", boxX + 12, popupY + 38);
+
+        ctx.fillStyle = "#ffed00";
+        ctx.font = "bold 12px 'ouroboros'";
+        ctx.fillText("Новое достижение!", boxX + 48, popupY + 22);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 14px 'ouroboros'";
+        ctx.fillText(currentAchievementPopup.name, boxX + 48, popupY + 44);
+        ctx.restore();
+
+        if (achievementPopupTimer <= 0) currentAchievementPopup = null;
+    }
+}
+
+function stopAllBgMusic() {
+    [bgMusic, sndWinterBg, sndAutumnBg, sndCyberBg, sndTimeBg, sndNyanBg, sndGlitchBg, sndBossBg].forEach(m => {
+        m.pause();
+    });
+}
+
+function playBgTrack(targetTrack) {
+    if (currentBgAudio !== targetTrack) {
+        if (currentBgAudio) currentBgAudio.pause();
+        currentBgAudio = targetTrack;
+        currentBgAudio.volume = musicVolume;
+        currentBgAudio.play().catch(() => {});
+    } else {
+        if (currentBgAudio.paused) {
+            currentBgAudio.volume = musicVolume;
+            currentBgAudio.play().catch(() => {});
+        }
+    }
+}
+
+function updateModeMusic() {
+    if (state !== "game") {
+        if (currentBgAudio) currentBgAudio.pause();
+        return;
+    }
+
+    if (bossCutscenePhase && bossCutscenePhase !== 'battle') {
+        stopAllBgMusic();
+        currentBgAudio = null;
+        return;
+    }
+
+    if (level === 4 || bossCutscenePhase === 'battle') {
+        playBgTrack(sndBossBg);
+    }
+    else if (isGlitchMode) playBgTrack(sndGlitchBg);
+    else if (isTimeParadox) playBgTrack(sndTimeBg);
+    else if (isNyanMode) playBgTrack(sndNyanBg);
+    else if (isCyberMode) playBgTrack(sndCyberBg);
+    else if (level === 2) playBgTrack(sndWinterBg);
+    else if (level === 3) playBgTrack(sndAutumnBg);
+    else playBgTrack(bgMusic);
+}
+
+function triggerBossIntro() {
+    if (bossTriggered) return;
+    bossTriggered = true;
+    bossCutscenePhase = 'freeze';
+    bossCutsceneTimer = 60;
+    bossGunCooldown = 120;
+    stopAllBgMusic();
+    currentBgAudio = null;
+    if (isCyberMode) deactivateCyberMode();
+    if (isTimeParadox) deactivateTimeParadox();
+    if (isNyanMode) deactivateNyanMode();
+    if (isGlitchMode) deactivateGlitchMode();
+    if (isThunderstormMode) deactivateThunderstormMode();
+    if (isUmbrellaMode) deactivateUmbrellaMode();
+}
+
+function spawnFloatingText(x, y, text, color) {
+    floatingTexts.push({ x: x, y: y, text: text, color: color, alpha: 1.0, vy: -1.5 });
+}
+
+function spawnSparks(x, y, color = "#ffed00", count = 8) {
+    for (let i = 0; i < count; i++) {
+        sparkParticles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            size: Math.random() * 3 + 2,
+            color: color,
+            alpha: 1.0
+        });
+    }
+}
+
+function spawnPopParticles(x, y, count = 16) {
+    const popColors = ["#ffffff", "#ff85a2", "#ffed00", "#a8e6cf", "#00ffff", "#ffb7c5"];
+    for (let i = 0; i < count; i++) {
+        let angle = Math.random() * Math.PI * 2;
+        let speed = Math.random() * 5 + 2;
+        sparkParticles.push({
+            x: x, y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: Math.random() * 4 + 3,
+            color: popColors[Math.floor(Math.random() * popColors.length)],
+            alpha: 1.0
+        });
+    }
+}
+
+function spawnConfetti(x, y, count = 25) {
+    const confettiColors = ["#ff0055", "#00ffff", "#ffed00", "#ff7f00", "#00ff66", "#aa00ff"];
+    for (let i = 0; i < count; i++) {
+        sparkParticles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.8) * 8,
+            size: Math.random() * 5 + 3,
+            color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+            alpha: 1.0
+        });
+    }
+}
+
+function drawAutumnBackground() {
+    let grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "#3d2635");
+    grad.addColorStop(1, "#8c4627");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    if (loadedImages['spiderWeb']) {
+        let img = images['spiderWeb'];
+        let webSize = Math.min(W, H) * 0.35;
+        ctx.drawImage(img, 0, 0, webSize, webSize);
+        ctx.save();
+        ctx.translate(W, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0, webSize, webSize);
+        ctx.restore();
+    }
+}
+
+function drawBossBackground() {
+    let grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "#0c0217");
+    grad.addColorStop(0.45, "#250529");
+    grad.addColorStop(1, "#440a2c");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    let portalX = W / 2;
+    let portalY = Math.max(90, H * 0.22);
+    let pulse = 0.5 + 0.15 * Math.sin(Date.now() / 300);
+    let portalR = Math.min(W * 0.4, 130);
+    
+    let portalGrad = ctx.createRadialGradient(portalX, portalY, 15, portalX, portalY, portalR * 1.5);
+    portalGrad.addColorStop(0, "rgba(255, 40, 100, " + (0.5 * pulse) + ")");
+    portalGrad.addColorStop(0.6, "rgba(140, 15, 80, " + (0.3 * pulse) + ")");
+    portalGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+    
+    ctx.save();
+    ctx.fillStyle = portalGrad;
+    ctx.beginPath();
+    ctx.arc(portalX, portalY, portalR * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (Math.random() < 0.18) {
+        sparkParticles.push({
+            x: Math.random() * W,
+            y: H + 10,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: -(Math.random() * 2 + 1),
+            size: Math.random() * 3 + 2,
+            color: Math.random() < 0.5 ? "#ff3366" : "#ffbd59",
+            alpha: 0.9
+        });
+    }
+    ctx.restore();
+}
+
+function drawNyanBackground() {
+    ctx.fillStyle = "#0f051d"; 
+    ctx.fillRect(0, 0, W, H);
+
+    nyanStars.forEach(s => {
+        ctx.fillStyle = s.color;
+        ctx.fillRect(s.x, s.y, s.size, s.size);
+        if (state === "game") {
+            s.x -= s.speed;
+            if (s.x < -10) { 
+                s.x = W + 10; 
+                s.y = Math.random() * H; 
+            }
+        }
+    });
+
+    const bandHeight = 6;
+    const startY = cat.y - (nyanRainbowColors.length * bandHeight) / 2;
+    nyanRainbowColors.forEach((color, index) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(0, startY + index * bandHeight, Math.max(0, cat.x - 10), bandHeight);
+    });
+}
+
+function activateNyanMode() {
+    visitedModes.nyan = true;
+    if (isNyanMode) {
+        nyanTimeLeft += 15;
+        return;
+    }
+    isNyanMode = true; nyanTimeLeft = 15; targetCatY = null;
+    updateModeMusic();
+    if (nyanTimer) clearInterval(nyanTimer);
+    nyanTimer = setInterval(() => { nyanTimeLeft--; if (nyanTimeLeft <= 0) deactivateNyanMode(); }, 1000);
+}
+
+function deactivateNyanMode() {
+    isNyanMode = false; 
+    if (nyanTimer) clearInterval(nyanTimer); 
+    cat.y = H - 100;
+    cat.x = W / 2;
+    updateModeMusic();
+}
+
+function activateTimeParadox() {
+    visitedModes.time = true;
+    if (isTimeParadox) {
+        timeParadoxLeft += 8;
+        return;
+    }
+    isTimeParadox = true; 
+    timeParadoxLeft = 8; 
+    clockHandAngle = 0;
+    canvas.style.filter = "grayscale(100%)";
+    updateModeMusic();
+    if (timeParadoxTimer) clearInterval(timeParadoxTimer);
+    timeParadoxTimer = setInterval(() => { 
+        timeParadoxLeft--; 
+        clockHandAngle += 30;
+        if (timeParadoxLeft <= 0) deactivateTimeParadox(); 
+    }, 1000);
+}
+
+function deactivateTimeParadox() {
+    isTimeParadox = false; if (timeParadoxTimer) clearInterval(timeParadoxTimer); canvas.style.filter = "none"; updateModeMusic();
+}
+
+function activateCyberMode() {
+    visitedModes.cyber = true;
+    if (isCyberMode) {
+        cyberTimeLeft += 15;
+        return;
+    }
+    isCyberMode = true; cyberTimeLeft = 15;
+    updateModeMusic();
+    if (cyberTimer) clearInterval(cyberTimer);
+    if (autoShootInterval) clearInterval(autoShootInterval);
+    cyberTimer = setInterval(() => { cyberTimeLeft--; if (cyberTimeLeft <= 0) deactivateCyberMode(); }, 1000);
+    autoShootInterval = setInterval(() => { if (isCyberMode && state === "game") shootBullet(); }, 300);
+}
+
+function deactivateCyberMode() {
+    isCyberMode = false; 
+    if (cyberTimer) clearInterval(cyberTimer); 
+    if (autoShootInterval) clearInterval(autoShootInterval); 
+    bullets = []; 
+    if (level === 4) {
+        bossGunCooldown = 180;
+    }
+    updateModeMusic();
+}
+
+function activateGlitchMode() {
+    visitedModes.glitch = true;
+    if (isGlitchMode) {
+        glitchTimeLeft += 10;
+        return;
+    }
+    isGlitchMode = true; glitchTimeLeft = 10;
+    glitchPopups = [];
+    for (let i = 0; i < 3; i++) spawnGlitchPopup();
+    updateModeMusic();
+    if (glitchTimer) clearInterval(glitchTimer);
+    glitchTimer = setInterval(() => {
+        glitchTimeLeft--;
+        if (Math.random() < 0.4) spawnGlitchPopup();
+        if (glitchTimeLeft <= 0) deactivateGlitchMode();
+    }, 1000);
+}
+
+function deactivateGlitchMode() {
+    isGlitchMode = false;
+    glitchPopups = [];
+    if (glitchTimer) clearInterval(glitchTimer);
+    updateModeMusic();
+}
+
+function activateThunderstormMode() {
+    if (isThunderstormMode) {
+        thunderstormTimeLeft += 7;
+        return;
+    }
+    isThunderstormMode = true;
+    thunderstormTimeLeft = 7;
+    thunderstormHit = false;
+    lightningStrikes = [];
+    nextStrikeTimer = 35;
+
+    if (thunderstormTimer) clearInterval(thunderstormTimer);
+    thunderstormTimer = setInterval(() => {
+        thunderstormTimeLeft--;
+        if (thunderstormTimeLeft <= 0) {
+            deactivateThunderstormMode();
+        }
+    }, 1000);
+}
+
+function deactivateThunderstormMode() {
+    if (!isThunderstormMode) return;
+    isThunderstormMode = false;
+    if (thunderstormTimer) clearInterval(thunderstormTimer);
+    thunderstormTimer = null;
+    lightningStrikes = [];
+    if (!thunderstormHit && state === "game") {
+        score += 30;
+        coins += 10;
+        saveGame();
+        playSound(sndCoin);
+        spawnConfetti(cat.x, cat.y, 35);
+        spawnFloatingText(cat.x, cat.y - 30, "+30 ⭐ +10 🪙!", "#ffed00");
+    }
+}
+
+function spawnShelfItem(shelf) {
+    let shelfItems = ["goldenStar", "star", "goldenCoin", "silverCoin", "coin", "pie", "apple", "fish", "coffee", "heart", "mistletoe", "can", "milk"];
+    let pickedType = shelfItems[Math.floor(Math.random() * shelfItems.length)];
+    let newItem = {
+        x: shelf.x,
+        y: shelf.y - 22,
+        shelf: shelf,
+        shelfOffsetX: (Math.random() - 0.5) * (shelf.w - 32),
+        type: pickedType,
+        points: itemsDB[pickedType] ? (pickedType === "goldenStar" ? 3 : (pickedType === "star" ? 1 : 2)) : 1,
+        speed: 0
+    };
+    newItem.x = shelf.x + newItem.shelfOffsetX;
+    items.push(newItem);
+}
+
+function initUmbrellaPlatforms() {
+    umbrellaPlatforms = [];
+    const count = 7;
+    const spacing = 75;
+    let baseShelf = {
+        x: cat.x,
+        y: cat.y + 40,
+        w: 95,
+        h: 14,
+        bounceAnim: 0
+    };
+    umbrellaPlatforms.push(baseShelf);
+
+    for (let i = 1; i < count; i++) {
+        let py = (cat.y + 40) - i * spacing;
+        let pw = 75 + Math.random() * 25;
+        let px = Math.random() * (W - pw - 40) + pw / 2 + 20;
+        let shelf = {
+            x: px,
+            y: py,
+            w: pw,
+            h: 14,
+            bounceAnim: 0
+        };
+        umbrellaPlatforms.push(shelf);
+        
+        if (Math.random() < 0.8) {
+            spawnShelfItem(shelf);
+        }
+    }
+}
+
+function activateUmbrellaMode() {
+    if (isUmbrellaMode) {
+        umbrellaTimeLeft += 20;
+        return;
+    }
+    isUmbrellaMode = true;
+    umbrellaTimeLeft = 20;
+    targetCatY = null;
+    catVy = -11.0;
+    items = items.filter(it => it.shelf);
+    initUmbrellaPlatforms();
+    playSound(sndJump);
+    spawnFloatingText(cat.x, cat.y - 25, "Зонтик!", "#ff85a2");
+
+    if (umbrellaTimer) clearInterval(umbrellaTimer);
+    umbrellaTimer = setInterval(() => {
+        umbrellaTimeLeft--;
+        if (umbrellaTimeLeft <= 0) {
+            deactivateUmbrellaMode();
+        }
+    }, 1000);
+}
+
+function deactivateUmbrellaMode() {
+    if (!isUmbrellaMode) return;
+    isUmbrellaMode = false;
+    if (umbrellaTimer) clearInterval(umbrellaTimer);
+    umbrellaTimer = null;
+    umbrellaPlatforms = [];
+    items = items.filter(it => !it.shelf);
+    catVy = 0;
+    targetCatY = H - 100;
+}
+
+function spawnGlitchPopup() {
+    const pw = 160, ph = 90;
+    glitchPopups.push({
+        x: Math.random() * (W - pw - 20) + 10,
+        y: Math.random() * (H - ph - 100) + 50,
+        w: pw, h: ph,
+        title: ["CRITICAL ERROR", "SYSTEM BUG", "404 NOT FOUND", "GLITCH"][Math.floor(Math.random() * 4)]
+    });
+}
 
 function saveCollection() {
-    let toSave = {};
-    for (let key in itemsDB) { toSave[key] = itemsDB[key].unlocked; }
-    localStorage.setItem("catCollection", JSON.stringify(toSave));
+    let toSaveItems = {}, toSaveSkins = {}, toSaveAchievements = {};
+    for (let key in itemsDB) toSaveItems[key] = itemsDB[key].unlocked;
+    for (let key in skinsDB) toSaveSkins[key] = skinsDB[key].unlocked;
+    for (let key in achievementsDB) toSaveAchievements[key] = achievementsDB[key].unlocked;
+    localStorage.setItem("catCollection", JSON.stringify(toSaveItems));
+    localStorage.setItem("catSkinsCollection", JSON.stringify(toSaveSkins));
+    localStorage.setItem("catCurrentSkin", currentSkin);
+    localStorage.setItem("catAchievementsCollection", JSON.stringify(toSaveAchievements));
 }
+
+function startDevHold(e) {
+    if (state !== "menu") return;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    const clientX = (touch.clientX - rect.left) * (W / rect.width);
+    const clientY = (touch.clientY - rect.top) * (H / rect.height);
+    if (clientX < 80 && clientY < 80) {
+        clearTimeout(devHoldTimer);
+        devHoldTimer = setTimeout(() => {
+            playSound(sndClick);
+            if (debugMenu) debugMenu.style.display = 'flex';
+        }, DEV_HOLD_TIME);
+    }
+}
+
+function cancelDevHold() { if (devHoldTimer) { clearTimeout(devHoldTimer); devHoldTimer = null; } }
+
+window.addEventListener("mousedown", startDevHold);
+canvas.addEventListener("mouseup", cancelDevHold);
+canvas.addEventListener("mouseleave", cancelDevHold);
+canvas.addEventListener("touchstart", startDevHold);
+canvas.addEventListener("touchend", cancelDevHold);
+canvas.addEventListener("touchcancel", cancelDevHold);
 
 function resize() {
     W = window.innerWidth; H = window.innerHeight;
@@ -114,9 +1044,31 @@ function resize() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
     cat.x = W / 2; cat.y = H - 100;
+    
     petals = [];
     for (let i = 0; i < 40; i++) {
-        petals.push({ x: Math.random() * W, y: Math.random() * H, speed: 0.8 + Math.random() * 1.2, size: 4 + Math.random() * 4, angle: Math.random() * Math.PI * 2, swing: Math.random() * 2 });
+        petals.push({ 
+            x: Math.random() * W, 
+            y: Math.random() * H, 
+            speed: 0.8 + Math.random() * 1.2, 
+            size: 4 + Math.random() * 4, 
+            angle: Math.random() * Math.PI * 2, 
+            swing: Math.random() * 2,
+            color: ["#d95a2b", "#b83b1e", "#e88d3f", "#732c1c"][Math.floor(Math.random() * 4)]
+        });
+    }
+    nyanStars = [];
+    for (let i = 0; i < 35; i++) {
+        nyanStars.push({ x: Math.random() * W, y: Math.random() * H, size: 3 + Math.random() * 5, speed: 4 + Math.random() * 6, color: ["#ff4545", "#ffa500", "#ffff00", "#00ff00", "#00ffff", "#ff69b4"][Math.floor(Math.random() * 6)] });
+    }
+    clouds = [];
+    for (let i = 0; i < 5; i++) {
+        clouds.push({
+            x: Math.random() * W,
+            y: Math.random() * (H * 0.4),
+            speed: 0.2 + Math.random() * 0.4,
+            r: 30 + Math.random() * 20
+        });
     }
 }
 window.addEventListener("resize", resize);
@@ -139,291 +1091,2166 @@ function wrapText(text, x, y, maxWidth, lineHeight) {
 }
 
 function resetGame() {
-    score = 0; items = []; lives = 3; level = 1; bombChaos = 1.0; milkTimer = 0; buffTimer = 0; jumpLock = 0;
+    score = 0; items = []; 
+    lives = 3; level = 1; 
+    bombChaos = 1.0; milkTimer = 0; 
+    buffTimer = 0; jumpLock = 0; 
+    scoreForNextCoin = 25; 
+    freezeIntensity = 0; freezeTimer = 0;
+    lastScore = 0; lastCoins = coins;
+    hasShield = false; magnetTimer = 0; 
+    candyStreak = 0; candyMultiplierTimer = 0; 
+    proposalBannerTimer = 0; appleTimer = 0; 
+    coffeeTimer = 0; jamTimer = 0; 
+    activePumpkin = null;
+    hasContinued = false;
+    waveCooldown = 700 + Math.floor(Math.random() * 400);
+
+    bossTriggered = false;
+    bossCutscenePhase = null;
+    bossCutsceneTimer = 0;
+    bossDialogIndex = 0;
+    flashAlpha = 0;
+    catDisappeared = false;
+    bossHp = BOSS_MAX_HP;
+    bossPhase = 1;
+    bossHitFlashTimer = 0;
+    phaseChangeBanner = null;
+    bossDefeated = false;
+    bossGunCooldown = 0;
+
+    currentBgAudio = null;
+    floatingTexts = [];
+    if (isCyberMode) deactivateCyberMode();
+    if (isTimeParadox) deactivateTimeParadox();
+    if (isNyanMode) deactivateNyanMode();
+    if (isGlitchMode) deactivateGlitchMode();
+    if (isThunderstormMode) deactivateThunderstormMode();
+    if (isUmbrellaMode) deactivateUmbrellaMode();
+}
+
+function resumeGame() { playSound(sndClick); state = "game"; pauseOverlay.style.display = "none"; updateModeMusic(); }
+
+function goToMenu() {
+    playSound(sndClick); state = "menu"; pauseOverlay.style.display = "none";
+    stopAllBgMusic();
+    if (isCyberMode) deactivateCyberMode();
+    if (isTimeParadox) deactivateTimeParadox();
+    if (isNyanMode) deactivateNyanMode();
+    if (isGlitchMode) deactivateGlitchMode();
+    if (isThunderstormMode) deactivateThunderstormMode();
+    if (isUmbrellaMode) deactivateUmbrellaMode();
+    resetGame();
+}
+
+function spawnItemWave() {
+    if (isUmbrellaMode || level === 4 || bossCutscenePhase !== null) return;
+
+    let badType = "bomb";
+    let goodType = "star";
+    if (level === 2) {
+        badType = "fire";
+        goodType = "icestar";
+    } else if (level === 3) {
+        badType = "knife";
+        goodType = "goldenStar";
+    }
+
+    let speedMult = levelSettings[level].speed * (isGlitchMode ? 1.3 : 1.0);
+    let waveSpeed = 2.8 * speedMult;
+
+    if (isNyanMode) {
+        const numSlots = Math.max(4, Math.min(7, Math.floor((H - 80) / 75)));
+        const slotH = (H - 80) / numSlots;
+        const safeIndex = Math.floor(Math.random() * numSlots);
+        for (let k = 0; k < numSlots; k++) {
+            let itemY = 40 + slotH * (k + 0.5);
+            let isSafe = (k === safeIndex);
+            items.push({
+                x: W + 50,
+                y: itemY,
+                type: isSafe ? goodType : badType,
+                points: isSafe ? (itemsDB[goodType] ? 2 : 1) : 0,
+                speed: waveSpeed,
+                isWaveItem: true,
+                isWaveSafe: isSafe
+            });
+        }
+    } else {
+        const numSlots = Math.max(4, Math.min(8, Math.floor(W / 75)));
+        const slotW = W / numSlots;
+        const safeIndex = Math.floor(Math.random() * numSlots);
+        for (let k = 0; k < numSlots; k++) {
+            let itemX = slotW * (k + 0.5);
+            let isSafe = (k === safeIndex);
+            items.push({
+                x: itemX,
+                y: -45,
+                type: isSafe ? goodType : badType,
+                points: isSafe ? (itemsDB[goodType] ? 2 : 1) : 0,
+                speed: waveSpeed,
+                isWaveItem: true,
+                isWaveSafe: isSafe
+            });
+        }
+    }
 }
 
 function startAction(clientX, clientY) {
-    if (bgMusic.paused && !isMusicMuted) bgMusic.play().catch(() => {});
-    
-    if (showUpdateModal) {
-        showUpdateModal = false;
+    if (showUpdateModal) { playSound(sndClick); showUpdateModal = false; return; }
+
+    if (state === "victory") {
+        const midX = W / 2, midY = H / 2;
+        if (clientX > midX - 90 && clientX < midX + 90 && clientY > midY + 115 && clientY < midY + 170) {
+            playSound(sndClick);
+            goToMenu();
+            return;
+        }
+    }
+
+    if (bossCutscenePhase === 'dialog1' || bossCutscenePhase === 'dialog2') {
+        let boxW = Math.min(W - 32, 440);
+        let boxH = 145;
+        let boxX = (W - boxW) / 2;
+        let boxY = (bossCutscenePhase === 'dialog1') ? (H / 2 - boxH / 2) : (H * 0.52 - boxH / 2);
+
+        if (clientX >= boxX - 12 && clientX <= boxX + boxW + 12 && clientY >= boxY - 12 && clientY <= boxY + boxH + 12) {
+            playSound(sndTap);
+            if (bossCutscenePhase === 'dialog1') {
+                bossDialogIndex++;
+                if (bossDialogIndex >= dialog1Texts.length) {
+                    bossCutscenePhase = 'flash';
+                    flashAlpha = 1.0;
+                    bossCutsceneTimer = 65;
+                    playSound(sndTransition);
+                    level = 4;
+                    catDisappeared = false;
+                    cat.x = W / 2;
+                    cat.y = H - 100;
+                    lives = 3;
+                    bossHp = BOSS_MAX_HP;
+                    bossPhase = 1;
+                    bossGunCooldown = 120;
+                    playSound(sndExtraLife);
+                    spawnFloatingText(W / 2, H - 140, "❤️ 3/3 ХП ВОССТАНОВЛЕНО!", "#ff85a2");
+                }
+            } else if (bossCutscenePhase === 'dialog2') {
+                bossDialogIndex++;
+                if (bossDialogIndex >= dialog2Texts.length) {
+                    bossCutscenePhase = 'battle';
+                    lives = 3;
+                    bossGunCooldown = 120;
+                    updateModeMusic();
+                    phaseChangeBanner = { text: "ФАЗА 1: НАЧАЛО", timer: 100 };
+                    playSound(sndBoom);
+                }
+            }
+        }
         return;
     }
 
-    const dist = Math.hypot(clientX - (W - 40), clientY - (H - 40));
-    if (dist < 25) { 
-        isMusicMuted = !isMusicMuted;
-        bgMusic.muted = isMusicMuted;
+    if (bossCutscenePhase && bossCutscenePhase !== 'battle') {
         return;
+    }
+
+    if (state === "game") {
+        if (isGlitchMode && glitchPopups.length > 0) {
+            for (let i = glitchPopups.length - 1; i >= 0; i--) {
+                let p = glitchPopups[i];
+                if (clientX > p.x && clientX < p.x + p.w && clientY > p.y && clientY < p.y + p.h) {
+                    glitchPopups.splice(i, 1);
+                    playSound(sndClick);
+                    return;
+                }
+            }
+        }
+
+        const dist = Math.hypot(clientX - (W - 40), clientY - (H - 40));
+        if (dist < 25) { 
+            playSound(sndClick); 
+            state = "pause"; 
+            if (currentBgAudio) currentBgAudio.pause();
+            pauseOverlay.style.display = "flex"; 
+            return; 
+        }
     }
 
     const midX = W / 2, midY = H / 2;
-
     if (state === "menu") {
-        if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY - 80 && clientY < midY - 40) { resetGame(); state = "game"; }
-        else if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY - 10 && clientY < midY + 30) { state = "collection"; selectedItem = null; }
-        else if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 60 && clientY < midY + 100) { showUpdateModal = true; }
-    } 
+        if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY - 80 && clientY < midY - 40) { 
+            playSound(sndClick); 
+            resetGame(); 
+            state = "game"; 
+            updateModeMusic();
+        }
+        else if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY - 10 && clientY < midY + 30) { playSound(sndClick); state = "collection"; collectionPage = 1; selectedItem = null; }
+        else if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 60 && clientY < midY + 100) { playSound(sndClick); state = "shop"; boxClickCount = 0; }
+    }
+    else if (state === "shop") {
+        if (isOpeningBox) return;
+        if (rewardModal) { playSound(sndClick); rewardModal = null; return; }
+
+        const boxSize = 120, boxX = W / 2, boxY = H / 2 - 20;
+        if (clientX > boxX - boxSize / 2 && clientX < boxX + boxSize / 2 && clientY > boxY - boxSize / 2 && clientY < boxY + boxSize / 2) {
+            boxScale = 0.85; playSound(sndTap); boxClickCount++;
+            if (boxClickCount >= 2) {
+                if (coins >= 30) {
+                    coins -= 30; 
+                    saveGame();
+                    boxClickCount = 0;
+                    
+                    pityCounter++;
+                    localStorage.setItem("catPityCounter", pityCounter);
+                    
+                    let isPityTriggered = (pityCounter >= PITY_LIMIT);
+                    if (isPityTriggered) {
+                        pityCounter = 0;
+                        localStorage.setItem("catPityCounter", pityCounter);
+                    }
+                    
+                    isOpeningBox = true; 
+                    dropTimer = 60; 
+                    rolledSkinKey = getRandomSkinKey(isPityTriggered);
+                } else boxClickCount = 0;
+            }
+        }
+        if (clientY > H - 60 && !isOpeningBox) { playSound(sndClick); state = "menu"; }
+    }
     else if (state === "collection") {
-        let clicked = false;
-        const keys = Object.keys(itemsDB), size = 50, gap = 20, cols = 4;
-        const startX = (W - (cols * size + (cols - 1) * gap)) / 2, startY = 120;
+        if (clientY > 50 && clientY < 90) {
+            const tabW = 95, gap = 8, totalW = tabW * 3 + gap * 2, startTabX = (W - totalW) / 2;
+            if (clientX > startTabX && clientX < startTabX + tabW) { playSound(sndClick); currentTab = "items"; collectionPage = 1; selectedItem = null; return; } 
+            else if (clientX > startTabX + tabW + gap && clientX < startTabX + (tabW + gap) * 2) { playSound(sndClick); currentTab = "skins"; collectionPage = 1; selectedItem = null; return; } 
+            else if (clientX > startTabX + (tabW + gap) * 2 && clientX < startTabX + totalW) { playSound(sndClick); currentTab = "achievements"; collectionPage = 1; selectedItem = null; return; }
+        }
         
-        keys.forEach((key, i) => {
-            let x = startX + (i % cols) * (size + gap);
-            let y = startY + Math.floor(i / cols) * (size + gap + 20);
-            if (clientX > x && clientX < x + size && clientY > y && clientY < y + size) {
-                selectedItem = key;
-                clicked = true;
+        let activeDB = (currentTab === "skins") ? skinsDB : ((currentTab === "achievements") ? achievementsDB : itemsDB);
+        let totalPages = Math.max(1, Math.ceil(Object.keys(activeDB).length / 16));
+
+        if (clientY > 90 && clientY < 120) {
+            if (totalPages >= 3) {
+                if (clientX > W / 2 - 70 && clientX < W / 2 - 25) { playSound(sndClick); collectionPage = 1; selectedItem = null; return; }
+                if (clientX > W / 2 - 25 && clientX < W / 2 + 20) { playSound(sndClick); collectionPage = 2; selectedItem = null; return; }
+                if (clientX > W / 2 + 20 && clientX < W / 2 + 70) { playSound(sndClick); collectionPage = 3; selectedItem = null; return; }
+            } else if (totalPages === 2) {
+                if (clientX > W / 2 - 60 && clientX < W / 2 - 20) { playSound(sndClick); collectionPage = 1; selectedItem = null; return; }
+                if (clientX > W / 2 + 20 && clientX < W / 2 + 60) { playSound(sndClick); collectionPage = 2; selectedItem = null; return; }
+            }
+        }
+
+        if (currentTab === "skins" && selectedItem && skinsDB[selectedItem] && skinsDB[selectedItem].unlocked) {
+            if (clientX > W / 2 - 80 && clientX < W / 2 + 80 && clientY > H - 95 && clientY < H - 57) {
+                if (currentSkin !== selectedItem) { playSound(sndClick); currentSkin = selectedItem; saveCollection(); }
+                return;
+            }
+        }
+
+        let clicked = false;
+        const keys = Object.keys(activeDB);
+        const pageSize = 16;
+        const pageKeys = keys.slice((collectionPage - 1) * pageSize, collectionPage * pageSize);
+
+        const size = 48, colGap = 15, cols = 4;
+        const startX = (W - (cols * size + (cols - 1) * colGap)) / 2, startY = 125;
+        
+        pageKeys.forEach((key, i) => {
+            let x = startX + (i % cols) * (size + colGap);
+            let y = startY + Math.floor(i / cols) * (size + colGap + 12);
+            if (clientX > x && clientX < x + size && clientY > y && clientY < y + size) { 
+                selectedItem = key; 
+                clicked = true; 
+                if (currentTab === "skins" && skinsDB[key] && skinsDB[key].unlocked) {
+                    playSound(sndMeow);
+                } else {
+                    playSound(sndClick);
+                }
             }
         });
-        if (!clicked && clientY > H - 60) state = "menu";
+
+        if (!clicked && clientY > H - 45) { playSound(sndClick); state = "menu"; }
     }
-    else if (state === "game") { 
-        lastX = clientX; 
-        isDragging = true; 
-    }
+    else if (state === "game") { lastX = clientX; lastY = clientY; isDragging = true; }
     else if (state === "gameover") {
-        if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 70 && clientY < midY + 110) { resetGame(); state = "game"; }
-        else if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 130 && clientY < midY + 170) { state = "menu"; }
+        if (!hasContinued) {
+            if (clientX > midX - 95 && clientX < midX + 95 && clientY > midY + 38 && clientY < midY + 82) {
+                if (coins >= 5) {
+                    coins -= 5;
+                    hasContinued = true;
+                    saveGame();
+                    playSound(sndExtraLife);
+                    lives = 1;
+                    items = items.filter(it => it.type !== "bomb" && it.type !== "fire" && it.type !== "knife");
+                    catRedFlashTimer = 35;
+                    state = "game";
+                    updateModeMusic();
+                } else {
+                    playSound(sndError);
+                    spawnFloatingText(midX, midY + 40, "Не хватает монеток!", "#ff4444");
+                }
+                return;
+            }
+            if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 95 && clientY < midY + 135) { 
+                playSound(sndClick); resetGame(); state = "game"; updateModeMusic(); 
+            }
+            else if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 150 && clientY < midY + 190) { 
+                playSound(sndClick); state = "menu"; 
+            }
+        } else {
+            if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 70 && clientY < midY + 110) { 
+                playSound(sndClick); resetGame(); state = "game"; updateModeMusic(); 
+            }
+            else if (clientX > midX - 80 && clientX < midX + 80 && clientY > midY + 130 && clientY < midY + 170) { 
+                playSound(sndClick); state = "menu"; 
+            }
+        }
     }
 }
 
 canvas.addEventListener("touchstart", e => { e.preventDefault(); startAction(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
 canvas.addEventListener("touchmove", e => { 
     e.preventDefault(); 
-    if (isDragging && state === "game" && jumpLock <= 0) { 
-        cat.x += e.touches[0].clientX - lastX; 
-        lastX = e.touches[0].clientX; 
+    if (bossCutscenePhase && bossCutscenePhase !== 'battle') return;
+    if (isDragging && state === "game") { 
+        let speedMult = (coffeeTimer > 0) ? 1.6 : 1.0;
+        if (jamTimer > 0) speedMult *= 0.5;
+
+        if (isNyanMode) {
+            let deltaY = (e.touches[0].clientY - lastY) * speedMult;
+            cat.y += deltaY;
+            let margin = (cat.h * cat.scale) / 2;
+            cat.y = Math.max(margin, Math.min(H - margin, cat.y));
+        } else if (jumpLock <= 0) {
+            let deltaX = (e.touches[0].clientX - lastX) * speedMult;
+            if (isTimeParadox) deltaX *= 0.3; 
+            
+            let newCatX = cat.x + deltaX;
+            
+            if (activePumpkin) {
+                let catHalfW = (cat.w * cat.scale) / 2;
+                let pLeft = activePumpkin.x - activePumpkin.width / 2;
+                let pRight = activePumpkin.x + activePumpkin.width / 2;
+                if (newCatX + catHalfW > pLeft && newCatX - catHalfW < pRight) {
+                    if (cat.x + catHalfW <= pLeft) newCatX = pLeft - catHalfW;
+                    else if (cat.x - catHalfW >= pRight) newCatX = pRight + catHalfW;
+                }
+            }
+
+            cat.x = newCatX; 
+        }
+        lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; 
     } 
 }, { passive: false });
 canvas.addEventListener("touchend", () => isDragging = false);
+canvas.addEventListener("mousedown", e => startAction(e.clientX, e.clientY));
+canvas.addEventListener("mousemove", e => {
+    if (bossCutscenePhase && bossCutscenePhase !== 'battle') return;
+    if (isDragging && state === "game") {
+        let speedMult = (coffeeTimer > 0) ? 1.6 : 1.0;
+        if (jamTimer > 0) speedMult *= 0.5;
 
-function drawBtn(x, y, text, color) {
+        if (isNyanMode) {
+            let deltaY = (e.clientY - lastY) * speedMult;
+            cat.y += deltaY;
+            let margin = (cat.h * cat.scale) / 2;
+            cat.y = Math.max(margin, Math.min(H - margin, cat.y));
+        } else if (jumpLock <= 0) {
+            let deltaX = (e.clientX - lastX) * speedMult;
+            if (isTimeParadox) deltaX *= 0.3;
+
+            let newCatX = cat.x + deltaX;
+
+            if (activePumpkin) {
+                let catHalfW = (cat.w * cat.scale) / 2;
+                let pLeft = activePumpkin.x - activePumpkin.width / 2;
+                let pRight = activePumpkin.x + activePumpkin.width / 2;
+                if (newCatX + catHalfW > pLeft && newCatX - catHalfW < pRight) {
+                    if (cat.x + catHalfW <= pLeft) newCatX = pLeft - catHalfW;
+                    else if (cat.x - catHalfW >= pRight) newCatX = pRight + catHalfW;
+                }
+            }
+
+            cat.x = newCatX;
+        }
+        lastX = e.clientX;
+        lastY = e.clientY;
+    }
+});
+window.addEventListener("mouseup", () => isDragging = false);
+
+function drawBtn(x, y, text, color, w = 160, h = 40, fontSize = 20) {
+    let baseFSize = fontSize;
+    ctx.font = baseFSize + "px 'ouroboros', sans-serif";
+    let textW = ctx.measureText(text).width;
+    let actualW = Math.max(w, textW + 24);
     ctx.fillStyle = color;
-    ctx.fillRect(x - 80, y - 20, 160, 40);
-    ctx.fillStyle = "white"; ctx.textAlign = "center";
-    ctx.font = "20px 'ouroboros', sans-serif";
-    ctx.fillText(text, x, y + 8);
+    ctx.fillRect(x - actualW / 2, y - h / 2, actualW, h);
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    while (ctx.measureText(text).width > actualW - 14 && baseFSize > 10) {
+        baseFSize--;
+        ctx.font = baseFSize + "px 'ouroboros', sans-serif";
+    }
+    ctx.fillText(text, x, y + baseFSize / 2.8);
 }
 
 function drawPetals() {
-    ctx.fillStyle = "#FFB7C5";
-    petals.forEach(p => {
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle);
-        ctx.beginPath(); ctx.ellipse(0, 0, p.size, p.size / 2, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-        p.y += p.speed; p.x += Math.sin(p.y / 30) * p.swing; p.angle += 0.02;
-        if (p.y > H) { p.y = -10; p.x = Math.random() * W; }
-    });
-}
-
-function updateGame() {
-    for (let l in levelSettings) { if (score >= levelSettings[l].minScore) level = parseInt(l); }
-
-    if (jumpLock > 0) {
-        cat.x += jumpDir; jumpLock--;
-    }
-    let margin = (cat.w * cat.scale) / 2;
-    cat.x = Math.max(margin, Math.min(W - margin, cat.x));
-
-    if (loadedImages.cat) {
-        let dw = cat.w * cat.scale, dh = cat.h * cat.scale;
-        ctx.drawImage(images.cat, cat.x - dw / 2, cat.y - dh / 2, dw, dh);
-    } else {
-        ctx.font = "40px serif";
-        ctx.textAlign = "center";
-        ctx.fillText("🐈", cat.x, cat.y);
-    }
-
-    if (Math.random() < 0.04) {
-        let typeRand = Math.random();
-        let newItem = { x: Math.random() * (W - 60) + 30, y: -50, type: "star", points: 1, speed: (3 + Math.random() * 4) * levelSettings[level].speed };
-
-        let heartChance = Math.min(0.005, 0.001 + (Math.min(level, 5) - 1) * 0.001);
-
-        if (typeRand < heartChance) { 
-            newItem.type = "heart"; 
-        }
-        else if (typeRand < 0.04) { 
-            newItem.type = "pepper"; 
-            newItem.points = 5; 
-        }
-        else if (typeRand < 0.25) { 
-            newItem.type = "bomb"; 
-        }
-        else if (typeRand < 0.35 && level >= 2) { 
-            newItem.type = "fish"; 
-            newItem.points = 2; 
-        }
-        else if (typeRand < 0.45 && level >= 3) { 
-            newItem.type = "milk"; 
-            newItem.points = 3; 
-        }
-        else if (typeRand < 0.55 && level >= 3) { 
-            newItem.type = "cucumber"; 
-            newItem.points = -2; 
-            newItem.speed *= 1.2; 
-        }
-        else if (typeRand < 0.60 && level >= 4) { 
-            newItem.type = "can"; 
-            newItem.points = 4; 
-        } 
-        items.push(newItem);
-    }
-    for (let i = items.length - 1; i >= 0; i--) {
-        let item = items[i];
-        let currentSpeed = item.speed;
-        if (item.type === "bomb") {
-            currentSpeed *= (1 + (bombChaos - 1) * 0.4);
-            if (milkTimer > 0) currentSpeed *= 0.4;
-        }
-        item.y += currentSpeed;
-
-        ctx.save();
-        let baseSize = (item.type === "bomb") ? 35 * bombChaos : 32;
-        if (item.type === "fish") baseSize = 42; 
-        
-        if (buffTimer > 0 && (item.type === "star" || item.type === "fish" || item.type === "milk")) {
-            baseSize *= 1.5;
-            ctx.shadowColor = "#FFF";
-            ctx.shadowBlur = 10;
-        }
-
-        if (loadedImages[item.type]) {
-            let img = images[item.type];
-            let aspect = img.width / img.height;
-            let drawW, drawH;
-            if (aspect > 1) { drawW = baseSize; drawH = baseSize / aspect; } 
-            else { drawH = baseSize; drawW = baseSize * aspect; }
-            if (item.type === "bomb" && milkTimer > 0) { ctx.shadowColor = "cyan"; ctx.shadowBlur = 15; }
-            ctx.drawImage(img, item.x - drawW/2, item.y - drawH/2, drawW, drawH);
-        } else {
-            ctx.font = baseSize + "px serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            const fallbacks = { star: "⭐", fish: "🐟", bomb: "💣", heart: "❤️", pepper: "🌶️", milk: "🥛", cucumber: "🥒", can: "🥫" };
-            ctx.fillText(fallbacks[item.type] || "?", item.x, item.y);
-        }
-        ctx.restore();
-
-        if (Math.hypot(item.x - cat.x, item.y - (cat.y - 10)) < (buffTimer > 0 ? 55 : 40)) {
-            if (itemsDB[item.type]) {
-                if (!itemsDB[item.type].unlocked) { itemsDB[item.type].unlocked = true; saveCollection(); }
-                
-                if (item.type === "bomb") {
-                    playSound(sndExplode);
-                    lives--;
-                    if (lives <= 0) {
-                        if (score > highScore) { highScore = score; localStorage.setItem("catHighScore", highScore); }
-                        state = "gameover";
-                    }
-                } else if (item.type === "pepper") {
-                    playSound(sndBurn);
-                    score += item.points;
-                    bombChaos += 0.15;
-                } else if (item.type === "star" || item.type === "fish" || item.type === "milk" || item.type === "can" || item.type === "heart") {
-                    playSound(sndCollect);
-                    if (item.type === "heart") {
-                        if (lives < 3) lives++;
-                    } else {
-                        score += item.points || 0;
-                        if (item.type === "milk") milkTimer = 180;
-                        if (item.type === "can") buffTimer = 300;
-                    }
-                } else if (item.type === "cucumber") {
-                    score += item.points;
-                    jumpLock = 20;
-                    jumpDir = (cat.x > W/2 ? -1 : 1) * 12;
-                }
+    if (level === 2) {
+        clouds.forEach(c => {
+            if (loadedImages['cloud']) {
+                let img = images['cloud'];
+                let drawW = c.r * 3; 
+                let drawH = drawW * (img.height / img.width);
+                ctx.save();
+                ctx.globalAlpha = 0.8;
+                ctx.drawImage(img, c.x, c.y - drawH / 2, drawW, drawH);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+                ctx.arc(c.x + c.r * 0.6, c.y - c.r * 0.2, c.r * 0.7, 0, Math.PI * 2);
+                ctx.arc(c.x - c.r * 0.6, c.y - c.r * 0.2, c.r * 0.7, 0, Math.PI * 2);
+                ctx.fill();
             }
-            items.splice(i, 1);
-            continue;
+            c.x += c.speed;
+            if (c.x - c.r * 2 > W) { c.x = -c.r * 2; c.y = Math.random() * (H * 0.4); }
+        });
+
+        ctx.fillStyle = "#FFFFFF";
+        petals.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+            p.y += p.speed; 
+            p.x += Math.sin(p.y / 20) * p.swing;
+            if (p.y > H) { p.y = -10; p.x = Math.random() * W; }
+        });
+
+        if (loadedImages['snowdrifts']) {
+            let img = images['snowdrifts'];
+            let drawW = W;
+            let drawH = W * (img.height / img.width);
+            ctx.drawImage(img, 0, H - drawH, drawW, drawH);
+        } else {
+            ctx.fillStyle = "rgba(230, 240, 255, 0.9)";
+            ctx.beginPath();
+            ctx.moveTo(0, H);
+            ctx.quadraticCurveTo(W * 0.3, H - 40, W * 0.6, H - 15);
+            ctx.quadraticCurveTo(W * 0.8, H - 35, W, H - 10);
+            ctx.lineTo(W, H);
+            ctx.fill();
+
+            ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+            ctx.beginPath();
+            ctx.moveTo(0, H);
+            ctx.quadraticCurveTo(W * 0.2, H - 15, W * 0.5, H - 30);
+            ctx.quadraticCurveTo(W * 0.8, H - 10, W, H);
+            ctx.fill();
         }
-        if (item.y > H + 50) items.splice(i, 1);
+    } else if (level === 3) {
+        petals.forEach(p => {
+            ctx.save(); 
+            ctx.translate(p.x, p.y); 
+            ctx.rotate(p.angle);
+            ctx.fillStyle = p.color || "#d95a2b"; 
+            let s = p.size * 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, -s);
+            ctx.lineTo(s*0.3, -s*0.2);
+            ctx.lineTo(s*0.9, -s*0.3);
+            ctx.lineTo(s*0.4, s*0.2);
+            ctx.lineTo(s*0.6, s*0.9);
+            ctx.lineTo(0, s*0.5);
+            ctx.lineTo(-s*0.6, s*0.9);
+            ctx.lineTo(-s*0.4, s*0.2);
+            ctx.lineTo(-s*0.9, -s*0.3);
+            ctx.lineTo(-s*0.3, -s*0.2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            
+            p.y += p.speed; 
+            p.x += Math.sin(p.y / 40) * p.swing;
+            p.angle += 0.01;
+            if (p.y > H) { p.y = -10; p.x = Math.random() * W; }
+        });
+    } else if (level === 1) {
+        ctx.fillStyle = "#FFB7C5";
+        petals.forEach(p => {
+            ctx.save(); 
+            ctx.translate(p.x, p.y); 
+            ctx.rotate(p.angle);
+            ctx.beginPath(); 
+            ctx.ellipse(0, 0, p.size, p.size / 2, 0, 0, Math.PI * 2); 
+            ctx.fill();
+            ctx.restore();
+            
+            p.y += p.speed; 
+            p.x += Math.sin(p.y / 30) * p.swing; 
+            p.angle += 0.02;
+            if (p.y > H) { p.y = -10; p.x = Math.random() * W; }
+        });
+    }
+}
+
+function handleItemPickup(item, source) {
+    if (!itemsDB[item.type]) return;
+    if (!itemsDB[item.type].unlocked) { 
+        itemsDB[item.type].unlocked = true; 
+        saveCollection(); 
     }
 
-    if (milkTimer > 0) milkTimer--;
-    if (buffTimer > 0) buffTimer--;
+    let collectSound = (level === 2) ? sndWinterCollect : sndCollect;
+    let mult = (candyMultiplierTimer > 0) ? 2 : 1;
+    let appleMult = (appleTimer > 0) ? 2 : 1;
+    let coinMult = mult * appleMult;
 
-    ctx.font = "bold 18px 'ouroboros'"; ctx.textAlign = "left"; ctx.fillStyle = "white";
-    ctx.fillText("⭐ " + score, 20, 40); 
-    ctx.fillText("❤️ " + lives, 20, 65); // На 25 пикселей ниже
-    
-    ctx.textAlign = "right"; ctx.fillText("🏆 " + highScore, W - 20, 40);
-    ctx.textAlign = "center"; ctx.fillStyle = "#FFEEC0";
-    ctx.fillText(levelSettings[level].title.toUpperCase(), W / 2, 40);
+    if (isCyberMode && source === "bullet" && item.type === "fire") {
+        playSound(sndBurn);
+        spawnSparks(item.x, item.y, "#ff7f00", 14);
+        return;
+    }
+
+    if (isCyberMode && source === "cat" && level !== 4) {
+        if (item.type === "fire") {
+            freezeIntensity = 0;
+            if (hasShield) {
+                hasShield = false;
+                playSound(sndCollect);
+                spawnFloatingText(cat.x, cat.y - 20, "SHIELD BROKEN!", "#00ffff");
+            } else {
+                playSound(sndExplode);
+                catRedFlashTimer = 12;
+                let lostLives = 1 * mult;
+                spawnFloatingText(item.x, item.y, "-" + lostLives + " ❤️", "#ff4444");
+                if (!isGodMode) lives -= lostLives;
+                if (lives <= 0 && !isGodMode) { triggerGameOver(); return; }
+            }
+            candyStreak = 0;
+            return;
+        }
+
+        if (item.type === "heart") {
+            playSound(sndBurn);
+            catRedFlashTimer = 12;
+            if (!isGodMode) lives = Math.max(0, lives - 1);
+            spawnFloatingText(cat.x, cat.y - 20, "-1 ❤️", "#ff4444");
+            if (lives <= 0 && !isGodMode) { triggerGameOver(); return; }
+            return;
+        }
+
+        if (item.type === "bomb") {
+            playSound(sndExtraLife);
+            if (lives < 3) lives++;
+            spawnFloatingText(cat.x, cat.y - 20, "+1 ❤️", "#a8e6cf");
+            spawnSparks(cat.x, cat.y - 20, "#a8e6cf", 8);
+            return;
+        }
+
+        if (item.type === "knife") {
+            playSound(sndExtraLife);
+            lives = Math.min(3, lives + 2);
+            spawnFloatingText(cat.x, cat.y - 20, "+2 ❤️", "#a8e6cf");
+            spawnSparks(cat.x, cat.y - 20, "#a8e6cf", 10);
+            return;
+        }
+
+        if (item.type === "coin" || item.type === "silverCoin" || item.type === "goldenCoin") {
+            let lost = (item.type === "goldenCoin" ? 3 : (item.type === "silverCoin" ? 2 : 1)) * coinMult;
+            coins = Math.max(0, coins - lost);
+            saveGame();
+            playSound(sndBurn);
+            spawnFloatingText(item.x, cat.y - 20, "-" + lost + " 🪙", "#ff4444");
+            return;
+        }
+
+        if (item.type === "pumpkin") {
+            let lost = 15 * coinMult;
+            coins = Math.max(0, coins - lost);
+            saveGame();
+            playSound(sndBurn);
+            spawnFloatingText(item.x, cat.y - 20, "-" + lost + " 🪙", "#ff4444");
+            return;
+        }
+
+        if (item.type === "star" || item.type === "icestar" || item.type === "goldenStar") {
+            let lostPts = (item.type === "goldenStar" ? 3 : (item.type === "icestar" ? 2 : 1)) * mult * appleMult;
+            score = Math.max(0, score - lostPts);
+            playSound(sndBurn);
+            spawnFloatingText(item.x, cat.y - 20, "-" + lostPts, "#ff4444");
+            return;
+        }
+
+        if (item.type === "cucumber") {
+            playSound(sndCollect);
+            score += 2 * mult;
+            spawnFloatingText(item.x, cat.y - 20, "+" + (2 * mult), "#a8e6cf");
+            return;
+        }
+
+        if (item.type === "snowflake") {
+            playSound(sndCollect);
+            score += 2 * mult;
+            freezeIntensity = 0;
+            freezeTimer = 0;
+            spawnFloatingText(item.x, cat.y - 20, "+2", "#a8e6cf");
+            return;
+        }
+
+        if (item.type === "pepper") {
+            playSound(sndBurn);
+            score = Math.max(0, score - 5 * mult * appleMult);
+            bombChaos = 1.0;
+            spawnFloatingText(item.x, cat.y - 20, "-5", "#ff4444");
+            return;
+        }
+
+        if (item.type === "coffee") {
+            playSound(sndBurn);
+            score = Math.max(0, score - 5 * mult * appleMult);
+            jamTimer = 180;
+            spawnFloatingText(cat.x, cat.y - 20, "-5", "#ff4444");
+            return;
+        }
+
+        if (item.type === "appleJam") {
+            playSound(sndBurn);
+            score = Math.max(0, score - 6 * mult * appleMult);
+            coffeeTimer = 180;
+            spawnFloatingText(cat.x, cat.y - 20, "-6", "#ff4444");
+            return;
+        }
+
+        if (item.type === "cursor") {
+            playSound(sndCollect);
+            deactivateGlitchMode();
+            spawnFloatingText(cat.x, cat.y - 20, "Fixed!", "#00ffff");
+            return;
+        }
+
+        if (item.type === "gingerbread") {
+            playSound(sndBurn);
+            score = Math.max(0, score - 5 * mult * appleMult);
+            hasShield = false;
+            spawnFloatingText(cat.x, cat.y - 20, "-5", "#ff4444");
+            return;
+        }
+
+        let lostPts = (item.points || 1) * mult * appleMult;
+        score = Math.max(0, score - lostPts);
+        playSound(sndBurn);
+        spawnFloatingText(item.x, cat.y - 20, "-" + lostPts, "#ff4444");
+        return;
+    }
+
+    if (item.type === "bomb" || item.type === "fire") {
+        if (item.type === "fire") freezeIntensity = 0;
+        if (item.type === "fire" && hasShield) {
+            hasShield = false;
+            playSound(sndCollect);
+            spawnFloatingText(cat.x, cat.y - 20, "SHIELD BROKEN!", "#00ffff");
+        } else {
+            playSound(sndExplode);
+            catRedFlashTimer = 12;
+            let lostLives = 1 * mult;
+            spawnFloatingText(item.x, item.y, "-" + lostLives + " ❤️", "#ff4444");
+            if (!isGodMode) lives -= lostLives;
+            if (lives <= 0 && !isGodMode) { triggerGameOver(); return; }
+        }
+        candyStreak = 0;
+    }
+    else if (item.type === "knife") {
+        if (hasShield) {
+            hasShield = false;
+            playSound(sndCollect);
+            spawnFloatingText(cat.x, cat.y - 20, "SHIELD BROKEN!", "#00ffff");
+        } else {
+            playSound(sndError);
+            catRedFlashTimer = 12;
+            let lostLives = 2 * mult;
+            spawnFloatingText(item.x, item.y, "-" + lostLives + " ❤️", "#ff4444");
+            if (!isGodMode) lives -= lostLives;
+            if (lives <= 0 && !isGodMode) { triggerGameOver(); return; }
+        }
+        candyStreak = 0;
+    }
+    else if (item.type === "coin") {
+        playSound(sndCoin);
+        let gained = 1 * coinMult;
+        coins += gained;
+        saveGame();
+        spawnFloatingText(item.x, item.y, "+" + gained + " 🪙", "#ffed00");
+    }
+    else if (item.type === "silverCoin") {
+        playSound(sndCoin);
+        let gained = 2 * coinMult;
+        coins += gained;
+        saveGame();
+        spawnFloatingText(item.x, item.y, "+" + gained + " 🪙", "#ffed00");
+    }
+    else if (item.type === "goldenCoin") {
+        playSound(sndCoin);
+        let gained = 3 * coinMult;
+        coins += gained;
+        saveGame();
+        spawnFloatingText(item.x, item.y, "+" + gained + " 🪙", "#ffed00");
+    }
+    else if (item.type === "snowflake") {
+        playSound(collectSound);
+        score -= 2;
+        if (hasShield) {
+            hasShield = false;
+            spawnFloatingText(cat.x, cat.y - 20, "Shield broken!", "#00ffff");
+        } else {
+            spawnFloatingText(item.x, item.y, "-2", "#ff4444");
+        }
+        freezeIntensity = (freezeIntensity || 0) + 1;
+        freezeTimer = 300;
+    }
+    else if (item.type === "mistletoe") {
+        playSound(collectSound);
+        magnetTimer = 300;
+        score += 2 * mult * appleMult;
+        spawnFloatingText(cat.x, cat.y - 20, "Magnet!", "#ff85a2");
+        spawnFloatingText(item.x, item.y, "+" + (2 * mult * appleMult), "#a8e6cf");
+    }
+    else if (item.type === "gingerbread") {
+        playSound(collectSound);
+        score += 5 * mult * appleMult;
+        if (hasShield) {
+            hasShield = false;
+            spawnFloatingText(cat.x, cat.y - 20, "Shield broken!", "#ff4444");
+            playSound(sndExplode);
+        } else {
+            hasShield = true;
+            spawnFloatingText(cat.x, cat.y - 20, "Shield!", "#a8e6cf");
+        }
+        spawnFloatingText(item.x, item.y, "+" + (5 * mult * appleMult), "#a8e6cf");
+    }
+    else if (item.type === "candyCane") {
+        playSound(collectSound);
+        candyStreak++;
+        score += 3 * mult * appleMult;
+        spawnFloatingText(item.x, item.y, "+" + (3 * mult * appleMult), "#a8e6cf");
+        if (candyStreak >= 2) {
+            candyMultiplierTimer = 300;
+            spawnFloatingText(cat.x, cat.y - 20, "2x MULT!", "#ffed00");
+        }
+    }
+    else if (item.type === "cucumber") {
+        playSound(sndJump);
+        score -= 2 * mult;
+        catRedFlashTimer = 10;
+        spawnFloatingText(item.x, item.y, "-" + (2 * mult), "#ff4444");
+        if (isTimeParadox) {
+            jumpLock = 60;
+            if (isNyanMode) jumpDirY = (cat.y > H / 2 ? -1 : 1) * 3;
+            else jumpDirX = (cat.x > W / 2 ? -1 : 1) * 3;
+        } else {
+            jumpLock = 20;
+            if (isNyanMode) jumpDirY = (cat.y > H / 2 ? -1 : 1) * 12;
+            else jumpDirX = (cat.x > W / 2 ? -1 : 1) * 12;
+        }
+        candyStreak = 0;
+    }
+    else if (item.type === "gun") { 
+        playSound(collectSound); 
+        activateCyberMode(); 
+        if (level === 4) {
+            spawnFloatingText(cat.x, cat.y - 30, "ОГООООНЬ!!!!", "#ffed00");
+        }
+    }
+    else if (item.type === "hourglass") { playSound(collectSound); activateTimeParadox(); }
+    else if (item.type === "cursor") { playSound(collectSound); activateGlitchMode(); }
+    else if (item.type === "lightning") { playSound(collectSound); activateThunderstormMode(); }
+    else if (item.type === "umbrella") { playSound(collectSound); activateUmbrellaMode(); }
+    else if (item.type === "poptart") {
+        playSound(collectSound);
+        nyanCount++;
+        localStorage.setItem("catNyanCount", nyanCount);
+        checkAchievements();
+        activateNyanMode();
+    }
+    else if (item.type === "ring") {
+        playSound(collectSound);
+        score += 8 * mult * appleMult;
+        proposalBannerTimer = 180;
+    }
+    else if (item.type === "christmasTree") {
+        playSound(collectSound);
+        score += 5 * mult * appleMult;
+        spawnFloatingText(item.x, item.y, "Clean!", "#a8e6cf");
+        items = items.filter(it => it.type !== "fire" && it.type !== "bomb");
+    }
+    else if (item.type === "gift") {
+        playSound(collectSound);
+        score += 20 * mult * appleMult;
+        unlockAchievement("happy_NY");
+    }
+    else if (item.type === "pepper") {
+        playSound(sndBurn);
+        score += 5 * mult * appleMult;
+        bombChaos += 0.25;
+        spawnFloatingText(item.x, item.y, "+" + (5 * mult * appleMult), "#ff4444");
+    }
+    else if (item.type === "remoteController") {
+        playSound(collectSound);
+        score += 5 * mult * appleMult;
+        bombChaos = 1.0;
+        spawnFloatingText(item.x, item.y, "Reboot!", "#a8e6cf");
+    }
+    else if (item.type === "pie") {
+        playSound(sndPie);
+        spawnConfetti(item.x, item.y, 30);
+        const allPieItems = ["star", "icestar", "goldenStar", "coin", "silverCoin", "goldenCoin", "apple", "fish", "milk", "can", "gingerbread", "christmasTree", "candyCane", "mistletoe", "heart", "coffee"];
+        const goodItems = (level === 4) ? allPieItems.filter(t => t !== "mistletoe") : allPieItems;
+        let count = Math.floor(Math.random() * 3) + 3;
+        for (let k = 0; k < count; k++) {
+            let randomGoodType = goodItems[Math.floor(Math.random() * goodItems.length)];
+            items.push({
+                x: item.x + (Math.random() - 0.5) * 40,
+                y: item.y,
+                type: randomGoodType,
+                points: itemsDB[randomGoodType] ? 2 : 1,
+                speed: (1.5 + Math.random() * 1.5) * (level === 4 ? 1.2 : levelSettings[level].speed),
+                vy: -(3 + Math.random() * 3)
+            });
+        }
+        spawnFloatingText(item.x, item.y, "pie!", "#ff85a2");
+    }
+    else if (item.type === "mapleLeaf") {
+        playSound(collectSound);
+        score += 4 * mult * appleMult;
+        spawnFloatingText(item.x, item.y, "+" + (4 * mult * appleMult), "#a8e6cf");
+        spawnFloatingText(cat.x, cat.y - 20, "clean!", "#ff85a2");
+        for (let j = items.length - 1; j >= 0; j--) {
+            if (items[j].type === "bomb" || items[j].type === "fire" || items[j].type === "knife" || items[j].type === "cucumber" || items[j].type === "snowflake") {
+                spawnSparks(items[j].x, items[j].y, "#ff85a2", 5);
+                items.splice(j, 1);
+            }
+        }
+    }
+    else if (item.type === "apple") {
+        playSound(collectSound);
+        score += 2 * mult;
+        appleTimer = 360;
+        spawnFloatingText(item.x, item.y, "+" + (2 * mult), "#a8e6cf");
+        spawnFloatingText(cat.x, cat.y - 20, "2x mult!", "#ffed00");
+    }
+    else if (item.type === "appleJam") {
+        playSound(collectSound);
+        score += 6 * mult * appleMult;
+        jamTimer = 180;
+        spawnFloatingText(item.x, item.y, "+" + (6 * mult * appleMult), "#a8e6cf");
+        spawnFloatingText(cat.x, cat.y - 20, "Jam!", "#d95a2b");
+    }
+    else if (item.type === "coffee") {
+        playSound(collectSound);
+        score += 5 * mult * appleMult;
+        coffeeTimer = 300;
+        spawnFloatingText(item.x, item.y, "+" + (5 * mult * appleMult), "#a8e6cf");
+        spawnFloatingText(cat.x, cat.y - 20, "speed!", "#ff85a2");
+    }
+    else if (item.type === "pumpkin") {
+        playSound(collectSound);
+        let gained = 15 * coinMult;
+        coins += gained;
+        saveGame();
+        spawnFloatingText(item.x, item.y, "+" + gained + " 🪙", "#ffed00");
+    }
+    else if (item.type === "heart") {
+        playSound(collectSound);
+        if (lives < 3) lives++;
+        spawnFloatingText(cat.x, cat.y - 20, "+1 ❤️", "#ff85a2");
+    }
+    else {
+        playSound(collectSound);
+        let ptsMult = mult * appleMult;
+        let addedPts = (item.points || 0) * ptsMult;
+        score += addedPts;
+        if (addedPts > 0) {
+            spawnFloatingText(item.x, item.y, "+" + addedPts, "#a8e6cf");
+            spawnSparks(item.x, item.y, "#a8e6cf", 6);
+        } else if (addedPts < 0) {
+            spawnFloatingText(item.x, item.y, "" + addedPts, "#ff4444");
+        }
+        if (item.type === "milk") milkTimer = 180;
+        if (item.type === "can") buffTimer = 300;
+    }
 }
 
-function drawMenu() {
-    ctx.textAlign = "center"; ctx.fillStyle = "#ff85a2";
-    ctx.font = "bold 24px 'ouroboros'";
-    ctx.fillText("С 8 Марта, котик ♡♡", W / 2, H / 2 - 140);
-    drawBtn(W / 2, H / 2 - 60, "Играть", "#ff85a2");
-    drawBtn(W / 2, H / 2 + 10, "Коллекция", "#ff85a2");
-    drawBtn(W / 2, H / 2 + 80, "Скоро...", "#ff85a2");
-}
+function drawBossDialog(text) {
+    let boxW = Math.min(W - 32, 440);
+    let boxH = 150;
+    let boxX = (W - boxW) / 2;
+    let boxY = (bossCutscenePhase === 'dialog1') ? (H / 2 - boxH / 2) : (H * 0.52 - boxH / 2);
 
-function drawMuteBtn() {
-    const x = W - 40, y = H - 40, radius = 20;
     ctx.save();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
-    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "20px sans-serif";
-    ctx.fillText(isMusicMuted ? "🔇" : "🔊", x, y);
+    ctx.fillStyle = "rgba(18, 10, 26, 0.94)";
+    ctx.strokeStyle = "#ff85a2";
+    ctx.lineWidth = 3;
+    ctx.shadowColor = "#ff5476";
+    ctx.shadowBlur = 14;
+
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 16);
+    else ctx.rect(boxX, boxY, boxW, boxH);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(255, 237, 0, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(boxX + 5, boxY + 5, boxW - 10, boxH - 10, 12);
+    else ctx.rect(boxX + 5, boxY + 5, boxW - 10, boxH - 10);
+    ctx.stroke();
+
+    ctx.fillStyle = "#ff85a2";
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(boxX + 16, boxY - 12, 110, 24, 6);
+    else ctx.rect(boxX + 16, boxY - 12, 110, 24);
+    ctx.fill();
+    ctx.fillStyle = "white";
+    ctx.font = "bold 13px 'ouroboros'";
+    ctx.textAlign = "center";
+    ctx.fillText("♡", boxX + 16 + 55, boxY + 5);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "15px 'ouroboros'";
+    ctx.textAlign = "left";
+    wrapText(text, boxX + 20, boxY + 36, boxW - 40, 20);
+
+    let pulse = 0.55 + 0.45 * Math.sin(Date.now() / 160);
+    ctx.fillStyle = "rgba(255, 237, 0, " + pulse + ")";
+    ctx.font = "bold 13px 'ouroboros'";
+    ctx.textAlign = "right";
+    ctx.fillText("▶ Нажми на окно", boxX + boxW - 18, boxY + boxH - 14);
     ctx.restore();
 }
 
-function drawModal() {
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(0, 0, W, H);
+function spawnBossLevelItem() {
+    let phaseSpeedMult = (bossPhase === 1) ? 0.88 : ((bossPhase === 2) ? 1.15 : 1.45);
+    let speed = (2.2 + Math.random() * 2.2) * phaseSpeedMult;
+    let newItem = {
+        x: Math.random() * (W - 60) + 30,
+        y: -50,
+        type: "star",
+        points: 1,
+        speed: speed
+    };
+
+    let hasGunOnScreen = items.some(it => it.type === "gun");
+    let canSpawnGun = !isCyberMode && !hasGunOnScreen && bossGunCooldown <= 0;
+    let gunChance = canSpawnGun ? (bossPhase === 1 ? 0.08 : (bossPhase === 2 ? 0.065 : 0.05)) : 0;
+
+    let badItemChance = isCyberMode ? 0.52 : 0.68;
+    let roll = Math.random();
+
+    if (canSpawnGun && roll < gunChance) {
+        newItem.type = "gun";
+        newItem.points = 0;
+    } else if (roll < gunChance + badItemChance) {
+        const badTypes = ["bomb", "fire", "knife", "cucumber", "snowflake"];
+        let weights = [0.28, 0.28, 0.22, 0.12, 0.10];
+        let wRoll = Math.random();
+        let cumulative = 0;
+        let chosenBad = "bomb";
+        for (let i = 0; i < badTypes.length; i++) {
+            cumulative += weights[i];
+            if (wRoll <= cumulative) { chosenBad = badTypes[i]; break; }
+        }
+        newItem.type = chosenBad;
+        if (chosenBad === "knife") newItem.points = -2;
+        else if (chosenBad === "snowflake" || chosenBad === "cucumber") newItem.points = -2;
+        else newItem.points = 0;
+    } else {
+        const goodPool = [
+            "star", "icestar", "goldenStar", 
+            "coin", "silverCoin", "goldenCoin",
+            "milk", "can", "fish", "gingerbread", "candyCane",
+            "christmasTree", "apple", "coffee", "pie", 
+            "mapleLeaf", "pepper", "remoteController", "ring", "heart"
+        ];
+        let chosenGood = goodPool[Math.floor(Math.random() * goodPool.length)];
+        newItem.type = chosenGood;
+        newItem.points = (chosenGood === "goldenStar" ? 3 : (chosenGood === "icestar" ? 2 : 1));
+    }
+
+    items.push(newItem);
+}
+
+function renderGame(isUpdating) {
+    if (isUpdating && level === 3 && score >= 900 && !bossTriggered) {
+        triggerBossIntro();
+    }
+
+    if (isUpdating && !bossTriggered) {
+        checkAchievements();
+        let oldLevel = level;
+        for (let l in levelSettings) { 
+            if (score >= levelSettings[l].minScore && parseInt(l) <= 3) {
+                level = parseInt(l); 
+            }
+        }
+        if (level !== oldLevel) {
+            updateModeMusic();
+        }
+
+        if (jumpLock > 0) { 
+            if (isNyanMode) {
+                cat.y += jumpDirY;
+            } else {
+                cat.x += jumpDirX; 
+            }
+            jumpLock--; 
+        }
+
+        if (magnetTimer > 0) magnetTimer--;
+        if (candyMultiplierTimer > 0) candyMultiplierTimer--;
+        if (proposalBannerTimer > 0) proposalBannerTimer--;
+        if (jamTimer > 0) jamTimer--;
+        
+        if (!isUmbrellaMode && level !== 4) {
+            waveCooldown--;
+            if (waveCooldown <= 0) {
+                spawnItemWave();
+                waveCooldown = (level === 1 ? 900 : (level === 2 ? 800 : 700)) + Math.floor(Math.random() * 400);
+            }
+        }
+    }
+
+    if (isUpdating && level === 4 && bossCutscenePhase === 'battle' && bossGunCooldown > 0) {
+        bossGunCooldown--;
+    }
+
+    if (bossCutscenePhase === 'freeze') {
+        if (isUpdating) {
+            bossCutsceneTimer--;
+            if (bossCutsceneTimer <= 0) {
+                playSound(sndDisappearance);
+                items.forEach(it => spawnPopParticles(it.x, it.y, 16));
+                spawnPopParticles(cat.x, cat.y, 24);
+                items = [];
+                catDisappeared = true;
+                bossCutscenePhase = 'popped';
+                bossCutsceneTimer = 60;
+            }
+        }
+    } else if (bossCutscenePhase === 'popped') {
+        if (isUpdating) {
+            bossCutsceneTimer--;
+            if (bossCutsceneTimer <= 0) {
+                bossCutscenePhase = 'dialog1';
+                bossDialogIndex = 0;
+            }
+        }
+    } else if (bossCutscenePhase === 'flash') {
+        if (isUpdating) {
+            bossCutsceneTimer--;
+            if (bossCutsceneTimer > 35) {
+                flashAlpha = 1.0;
+            } else {
+                flashAlpha = Math.max(0, bossCutsceneTimer / 35);
+            }
+            if (bossCutsceneTimer <= 0) {
+                flashAlpha = 0;
+                bossCutscenePhase = 'dialog2';
+                bossDialogIndex = 0;
+            }
+        }
+    }
+
+    let hoverY = (bossCutscenePhase === 'dialog2' || bossCutscenePhase === 'battle') ? Math.sin(Date.now() / 320) * 8 : 0;
+    let bX = W / 2;
+    let bY = Math.max(90, H * 0.22) + hoverY;
+
+    if (level === 4 && bossCutscenePhase === 'battle' && isUpdating) {
+        if (bossHitFlashTimer > 0) bossHitFlashTimer--;
+
+        if (bossHp > 160) {
+            bossPhase = 1;
+        } else if (bossHp > 80) {
+            if (bossPhase < 2) {
+                bossPhase = 2;
+                phaseChangeBanner = { text: "2 ФАЗА!", timer: 120 };
+                playSound(sndThunder);
+                spawnConfetti(W / 2, 120, 24);
+            }
+        } else if (bossHp > 0) {
+            if (bossPhase < 3) {
+                bossPhase = 3;
+                phaseChangeBanner = { text: "3 ФАЗА: ФИНАЛ!", timer: 120 };
+                playSound(sndThunder);
+                spawnConfetti(W / 2, 120, 32);
+            }
+        } else if (bossHp <= 0 && !bossDefeated) {
+            bossDefeated = true;
+            state = "victory";
+            stopAllBgMusic();
+            playSound(sndAchievement);
+            unlockAchievement("boss_slayer");
+            spawnConfetti(W / 2, H / 2, 70);
+            coins += 50;
+            saveGame();
+            return;
+        }
+
+        if (phaseChangeBanner) {
+            phaseChangeBanner.timer--;
+            if (phaseChangeBanner.timer <= 0) phaseChangeBanner = null;
+        }
+    }
+
+    // тыква
+    if (activePumpkin && !catDisappeared) {
+        if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle')) {
+            if (activePumpkin.holdTimer > 0) {
+                activePumpkin.holdTimer--;
+            } else if (activePumpkin.opacity > 0) {
+                activePumpkin.opacity -= 0.02;
+                if (activePumpkin.opacity <= 0) activePumpkin.x = -9999;
+            } else {
+                activePumpkin = null;
+            }
+        }
+
+        if (activePumpkin && loadedImages['pumpkin']) {
+            ctx.save();
+            ctx.globalAlpha = activePumpkin.opacity;
+            let img = images['pumpkin'];
+            ctx.drawImage(img, activePumpkin.x - 25, activePumpkin.y - 25, 50, 50);
+            ctx.restore();
+        }
+    }
+
+    // пульки в кибере
+    for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
+        let b = bullets[bIndex];
+        if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle')) {
+            let bulletSpeedMult = isTimeParadox ? 0.3 : 1.0;
+            b.x += (b.vx || 0) * bulletSpeedMult;
+            b.y += (b.vy || 0) * bulletSpeedMult;
+        }
+
+        ctx.save();
+        ctx.fillStyle = "#ffed00"; ctx.shadowColor = "#ff5476"; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+
+        if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle')) {
+            if (level === 4) {
+                if (bossCutscenePhase === 'battle' && Math.hypot(b.x - bX, b.y - bY) < 68) {
+                    bossHp = Math.max(0, bossHp - 1);
+                    bossHitFlashTimer = 8;
+                    playSound(sndShot);
+                    spawnSparks(b.x, b.y, "#ff0055", 6);
+                    spawnFloatingText(bX + (Math.random() - 0.5) * 40, bY - 25, "-1 💥", "#ff4444");
+                    bullets.splice(bIndex, 1);
+                    continue;
+                }
+            } else {
+                for (let i = items.length - 1; i >= 0; i--) {
+                    let item = items[i];
+                    if (Math.hypot(b.x - item.x, b.y - item.y) < 25) {
+                        handleItemPickup(item, "bullet");
+                        items.splice(i, 1);
+                        bullets.splice(bIndex, 1);
+                        break;
+                    }
+                }
+            }
+        }
+        if (isUpdating && (b.y < -20 || b.x > W + 20)) bullets.splice(bIndex, 1);
+    }
+
+    // зонтик
+    if (isUmbrellaMode && !catDisappeared) {
+        if (isUpdating) {
+            catVy += 0.38;
+            if (catVy > 9.5) catVy = 9.5;
+            cat.y += catVy;
+
+            let catBottom = cat.y + (cat.h * cat.scale) / 2;
+            if (catVy > 0) {
+                for (let p of umbrellaPlatforms) {
+                    let halfW = p.w / 2;
+                    if (cat.x >= p.x - halfW - 14 && cat.x <= p.x + halfW + 14) {
+                        if (catBottom >= p.y && (catBottom - catVy) <= p.y + 14) {
+                            cat.y = p.y - (cat.h * cat.scale) / 2;
+                            catVy = -11.5;
+                            p.bounceAnim = 6;
+                            playSound(sndJump);
+                            spawnSparks(cat.x, p.y, "#ffbd59", 7);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (cat.y >= H - 85) {
+                cat.y = H - 85;
+                catVy = -11.0;
+                playSound(sndJump);
+                spawnSparks(cat.x, H - 75, "#a8e6cf", 8);
+            }
+
+            let scrollThreshold = H * 0.40;
+            if (cat.y < scrollThreshold && catVy < 0) {
+                let diffY = scrollThreshold - cat.y;
+                cat.y = scrollThreshold;
+
+                umbrellaPlatforms.forEach(p => { p.y += diffY; });
+                items.forEach(it => { it.y += diffY; });
+
+                umbrellaPlatforms = umbrellaPlatforms.filter(p => p.y < H + 60);
+
+                let topY = umbrellaPlatforms.length > 0 ? Math.min(...umbrellaPlatforms.map(p => p.y)) : 0;
+                while (topY > -60) {
+                    topY -= (70 + Math.random() * 25);
+                    let newShelfW = 75 + Math.random() * 25;
+                    let newShelfX = Math.random() * (W - newShelfW - 40) + newShelfW / 2 + 20;
+                    let newShelf = {
+                        x: newShelfX,
+                        y: topY,
+                        w: newShelfW,
+                        h: 14,
+                        bounceAnim: 0
+                    };
+                    umbrellaPlatforms.push(newShelf);
+
+                    if (Math.random() < 0.75) {
+                        spawnShelfItem(newShelf);
+                    }
+                }
+            }
+
+            umbrellaPlatforms.forEach(p => {
+                if (p.bounceAnim > 0) p.bounceAnim = Math.max(0, p.bounceAnim - 0.5);
+            });
+        }
+
+        umbrellaPlatforms.forEach(p => {
+            let drawY = p.y + p.bounceAnim;
+            let left = p.x - p.w / 2;
+
+            ctx.save();
+            ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(left + 2, drawY + 4, p.w, p.h, 5);
+            else ctx.rect(left + 2, drawY + 4, p.w, p.h);
+            ctx.fill();
+
+            let shelfGrad = ctx.createLinearGradient(left, drawY, left, drawY + p.h);
+            shelfGrad.addColorStop(0, "#d89662");
+            shelfGrad.addColorStop(0.35, "#ba7340");
+            shelfGrad.addColorStop(1, "#8a4c21");
+            ctx.fillStyle = shelfGrad;
+            ctx.strokeStyle = "#5a2d0c";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(left, drawY, p.w, p.h, 5);
+            else ctx.rect(left, drawY, p.w, p.h);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "rgba(255, 235, 200, 0.45)";
+            ctx.fillRect(left + 4, drawY + 1.5, p.w - 8, 2.5);
+
+            ctx.fillStyle = "#5a2d0c";
+            ctx.fillRect(left + 6, drawY + p.h - 1, 4, 3);
+            ctx.fillRect(left + p.w - 10, drawY + p.h - 1, 4, 3);
+            ctx.restore();
+        });
+
+        ctx.save();
+        ctx.fillStyle = "#ff85a2";
+        ctx.font = "bold 20px 'ouroboros'";
+        ctx.textAlign = "center";
+        ctx.shadowColor = "#000000";
+        ctx.shadowBlur = 4;
+        ctx.fillText("РЕЖИМ ЗОНТИКА: " + umbrellaTimeLeft + "с", W / 2, 135);
+        ctx.restore();
+    }
+
+    // где кот
+    if (!catDisappeared) {
+        if (isNyanMode) {
+            let marginY = (cat.h * cat.scale) / 2;
+            cat.y = Math.max(marginY, Math.min(H - marginY, cat.y));
+        } else {
+            let marginX = (cat.w * cat.scale) / 2;
+            cat.x = Math.max(marginX, Math.min(W - marginX, cat.x));
+        }
+        
+        if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle')) {
+            if (isNyanMode) cat.x += (60 - cat.x) * 0.1;
+            else if (isUmbrellaMode) {
+            } else if (targetCatY !== null) {
+                cat.y += ((H - 100) - cat.y) * 0.15;
+                if (Math.abs(cat.y - (H - 100)) < 1) { cat.y = H - 100; targetCatY = null; }
+            }
+        }
+
+        let skinToDraw = isNyanMode ? "nyanCat" : currentSkin;
+        if (isGlitchMode && Math.random() < 0.2) {
+            const keys = Object.keys(skinsDB);
+            skinToDraw = keys[Math.floor(Math.random() * keys.length)];
+        }
+
+        if (loadedImages[skinToDraw]) {
+            let img = images[skinToDraw], baseH = cat.h * cat.scale, aspect = img.width / img.height;
+            let drawH = baseH, drawW = baseH * aspect;
+            
+            if (hasShield) {
+                ctx.save();
+                ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 3; ctx.shadowColor = "#00ffff"; ctx.shadowBlur = 10;
+                ctx.beginPath(); ctx.arc(cat.x, cat.y, drawW / 1.5, 0, Math.PI * 2); ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.save();
+            if (catRedFlashTimer > 0) {
+                ctx.globalAlpha = 0.4;
+                ctx.shadowColor = "#ff4444"; 
+                ctx.shadowBlur = 15; 
+            } else if (coffeeTimer > 0) {
+                ctx.shadowColor = "#ffed00"; 
+                ctx.shadowBlur = 24; 
+            }
+            
+            ctx.drawImage(img, cat.x - drawW / 2, cat.y - drawH / 2, drawW, drawH);
+
+            if (isUmbrellaMode && loadedImages['umbrella']) {
+                let umbImg = images['umbrella'];
+                let umbSize = 44;
+                ctx.save();
+                if (catVy < 0) {
+                    ctx.translate(cat.x + 8, cat.y - drawH / 2 - 4);
+                    ctx.rotate(0.18);
+                    ctx.drawImage(umbImg, -umbSize / 2, -umbSize / 2, umbSize, umbSize);
+                } else {
+                    let sway = Math.sin(Date.now() / 140) * 0.12;
+                    ctx.translate(cat.x, cat.y - drawH / 2 - 12);
+                    ctx.rotate(sway);
+                    ctx.drawImage(umbImg, -umbSize / 2, -umbSize / 2, umbSize, umbSize);
+                }
+                ctx.restore();
+            }
+
+            if (coffeeTimer > 0) {
+                let glowAlpha = 0.45 + 0.3 * Math.sin(Date.now() / 90);
+                ctx.strokeStyle = "rgba(255, 237, 0, " + glowAlpha + ")";
+                ctx.lineWidth = 3.5;
+                ctx.shadowColor = "#ffed00";
+                ctx.shadowBlur = 16;
+                ctx.beginPath();
+                ctx.ellipse(cat.x, cat.y, drawW * 0.65, drawH * 0.65, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+        
+        if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle') && (buffTimer > 0 || catRedFlashTimer > 0 || coffeeTimer > 0)) {
+            let trailCol = catRedFlashTimer > 0 ? "#ff4444" : (coffeeTimer > 0 ? "#ffed00" : "#ffbd59");
+            catTrail.push({ x: cat.x, y: cat.y, alpha: 0.7, color: trailCol });
+        }
+    }
+
+    for (let i = catTrail.length - 1; i >= 0; i--) {
+        let t = catTrail[i];
+        if (isUpdating) t.alpha -= 0.05;
+        if (t.alpha <= 0) { catTrail.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = t.alpha;
+        ctx.fillStyle = t.color;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    if (level === 4 || bossCutscenePhase === 'flash' || bossCutscenePhase === 'dialog2' || bossCutscenePhase === 'battle') {
+        let bW = 150, bH = 150;
+        ctx.save();
+
+        if (bossHitFlashTimer > 0) {
+            ctx.globalAlpha = 0.55;
+            ctx.shadowColor = "#ff0033";
+            ctx.shadowBlur = 30;
+        } else {
+            let auraPulse = 0.5 + 0.3 * Math.sin(Date.now() / 200);
+            ctx.shadowColor = "#ff0055";
+            ctx.shadowBlur = 24 * auraPulse;
+        }
+
+        if (loadedImages['boss']) {
+            let bImg = images['boss'];
+            let aspect = (bImg.width && bImg.height) ? (bImg.width / bImg.height) : 1;
+            if (aspect > 1) {
+                bW = 160; bH = 160 / aspect;
+            } else {
+                bH = 160; bW = 160 * aspect;
+            }
+            ctx.drawImage(bImg, bX - bW / 2, bY - bH / 2, bW, bH);
+        } else {
+            ctx.fillStyle = (bossHitFlashTimer > 0) ? "#ff3333" : "#ff0055";
+            ctx.beginPath();
+            ctx.arc(bX, bY, 50, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 18px 'ouroboros'";
+            ctx.textAlign = "center";
+            ctx.fillText("БОСС", bX, bY + 6);
+        }
+        ctx.restore();
+
+        if (bossCutscenePhase === 'battle') {
+            const barW = Math.min(W - 40, 260);
+            const barH = 16;
+            const barX = (W - barW) / 2;
+            const barY = 62;
+            const hpRatio = Math.max(0, bossHp / BOSS_MAX_HP);
+
+            ctx.save();
+            ctx.fillStyle = "rgba(10, 5, 20, 0.85)";
+            ctx.strokeStyle = "#ff0055";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(barX, barY, barW, barH, 8);
+            else ctx.rect(barX, barY, barW, barH);
+            ctx.fill();
+            ctx.stroke();
+            
+            let hpGrad = ctx.createLinearGradient(barX, barY, barX + barW, barY);
+            if (bossPhase === 1) {
+                hpGrad.addColorStop(0, "#ff5476");
+                hpGrad.addColorStop(1, "#ff0055");
+            } else if (bossPhase === 2) {
+                hpGrad.addColorStop(0, "#ff9900");
+                hpGrad.addColorStop(1, "#ff0055");
+            } else {
+                hpGrad.addColorStop(0, "#ff0033");
+                hpGrad.addColorStop(1, "#990022");
+            }
+            ctx.fillStyle = hpGrad;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(barX + 2, barY + 2, Math.max(0, (barW - 4) * hpRatio), barH - 4, 6);
+            else ctx.rect(barX + 2, barY + 2, Math.max(0, (barW - 4) * hpRatio), barH - 4);
+            ctx.fill();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 12px 'ouroboros'";
+            ctx.textAlign = "center";
+            ctx.shadowColor = "#000000";
+            ctx.shadowBlur = 4;
+            ctx.fillText("БОСС: " + bossHp + " / " + BOSS_MAX_HP, W / 2, barY + 12);
+
+            let phaseColor = (bossPhase === 1) ? "#a8e6cf" : (bossPhase === 2 ? "#ffed00" : "#ff4444");
+            ctx.fillStyle = phaseColor;
+            ctx.font = "bold 13px 'ouroboros'";
+            ctx.fillText("Фаза " + bossPhase + " (" + (bossPhase === 1 ? "Первая" : (bossPhase === 2 ? "Вторая" : "Третья")) + ")", W / 2, barY + 32);
+            ctx.restore();
+        }
+    }
+
+    if (phaseChangeBanner) {
+        ctx.save();
+        let pulse = 0.7 + 0.3 * Math.sin(Date.now() / 80);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, H * 0.44 - 30, W, 60);
+        ctx.fillStyle = "#ffed00";
+        ctx.shadowColor = "#ff0055";
+        ctx.shadowBlur = 18;
+        ctx.font = "bold 26px 'ouroboros'";
+        ctx.textAlign = "center";
+        ctx.fillText(phaseChangeBanner.text, W / 2, H * 0.44 + 9);
+        ctx.restore();
+    }
+
+    for (let i = sparkParticles.length - 1; i >= 0; i--) {
+        let p = sparkParticles[i];
+        if (isUpdating) {
+            p.x += p.vx; p.y += p.vy;
+            p.alpha -= 0.035;
+        }
+        if (p.alpha <= 0) { sparkParticles.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        ctx.restore();
+    }
+
+    if (isUpdating && level === 4 && bossCutscenePhase === 'battle') {
+        let bossSpawnChance = (bossPhase === 1) ? 0.040 : ((bossPhase === 2) ? 0.062 : 0.088);
+        if (Math.random() < bossSpawnChance) {
+            spawnBossLevelItem();
+        }
+    }
+
+    let spawnChance = (level === 1) ? 0.045 : (level === 2 ? 0.049 : 0.055);
+    if (isUpdating && !isUmbrellaMode && level !== 4 && !bossCutscenePhase && Math.random() < spawnChance) {
+        let typeRand = Math.random();
+        let speedMult = levelSettings[level].speed * (isGlitchMode ? 1.3 : 1.0);
+        let newItem = { x: Math.random() * (W - 60) + 30, y: -50, type: "star", points: 1, speed: (2.5 + Math.random() * 3) * speedMult };
+
+        if (level === 3) {
+            if (typeRand < 0.015)      { newItem.type = "lightning"; newItem.points = 0; }
+            else if (typeRand < 0.030) { newItem.type = "umbrella"; newItem.points = 0; }
+            else if (typeRand < 0.050) { newItem.type = "goldenCoin"; newItem.points = 0; }
+            else if (typeRand < 0.065) { newItem.type = "pie"; newItem.points = 2; }
+            else if (typeRand < 0.085) { newItem.type = "mapleLeaf"; newItem.points = 4; }
+            else if (typeRand < 0.100) { newItem.type = "apple"; newItem.points = 2; }
+            else if (typeRand < 0.115) { newItem.type = "appleJam"; newItem.points = 6; }
+            else if (typeRand < 0.130) { newItem.type = "coffee"; newItem.points = 5; }
+            else if (typeRand < 0.155) { newItem.type = "pumpkin"; newItem.points = 0; }
+            else if (typeRand < 0.395) { newItem.type = "knife"; newItem.points = -2; }
+            else                       { newItem.type = "goldenStar"; newItem.points = 3; }
+        } 
+        else if (level === 2) {
+            if (typeRand < 0.002)      { newItem.type = "gift"; newItem.points = 20; }    
+            else if (typeRand < 0.004) { newItem.type = "remoteController"; newItem.points = 0; }
+            else if (typeRand < 0.007) { newItem.type = "ring"; newItem.points = 8; } 
+            else if (typeRand < 0.017) { newItem.type = "gun"; newItem.points = 0; }  
+            else if (typeRand < 0.025) { newItem.type = "cursor"; newItem.points = 0; }  
+            else if (typeRand < 0.045) { newItem.type = "silverCoin"; newItem.points = 0; }  
+            else if (typeRand < 0.060) { newItem.type = "christmasTree"; newItem.points = 5; }  
+            else if (typeRand < 0.075) { newItem.type = "mistletoe"; newItem.points = 2; }   
+            else if (typeRand < 0.090) { newItem.type = "gingerbread"; newItem.points = 3; }  
+            else if (typeRand < 0.110) { newItem.type = "candyCane"; newItem.points = 4; }  
+            else if (typeRand < 0.135) { newItem.type = "snowflake"; newItem.points = -2; newItem.speed *= 1.2; } 
+            else if (typeRand < 0.335) { newItem.type = "fire"; newItem.points = 0; }  
+            else                       { newItem.type = "icestar"; newItem.points = 2; } 
+        } 
+        else {
+            if (typeRand < 0.001)      { newItem.type = "heart"; newItem.points = 0; }          
+            else if (typeRand < 0.002) { newItem.type = "remoteController"; newItem.points = 0; }
+            else if (typeRand < 0.003) { newItem.type = "ring"; newItem.points = 8; }        
+            else if (typeRand < 0.014) { newItem.type = "poptart"; newItem.points = 0; }  
+            else if (typeRand < 0.015) { newItem.type = "hourglass"; newItem.points = 0; }       
+            else if (typeRand < 0.025) { newItem.type = "coin"; newItem.points = 0; }     
+            else if (typeRand < 0.040) { newItem.type = "pepper"; newItem.points = 5; }  
+            else if (typeRand < 0.055) { newItem.type = "milk"; newItem.points = 3; }
+            else if (typeRand < 0.067) { newItem.type = "fish"; newItem.points = 2; }
+            else if (typeRand < 0.069) { newItem.type = "can"; newItem.points = 4; }
+            else if (typeRand < 0.100) { newItem.type = "cucumber"; newItem.points = -2; newItem.speed *= 1.2; }
+            else if (typeRand < 0.280) { newItem.type = "bomb"; newItem.points = 0; }
+            else                       { newItem.type = "star"; newItem.points = 1; }
+        }
+
+        if (isNyanMode) { newItem.x = W + 50; newItem.y = Math.random() * (H - 100) + 50; }
+
+        let isBadType = (newItem.type === "bomb" || newItem.type === "fire" || newItem.type === "knife" || newItem.type === "cucumber" || newItem.type === "snowflake" || newItem.type === "pumpkin");
+        if (isBadType) {
+            let safeWaveItem = items.find(it => it.isWaveItem && it.isWaveSafe);
+            if (safeWaveItem) {
+                if (isNyanMode) {
+                    let attempts = 0;
+                    while (Math.abs(newItem.y - safeWaveItem.y) < 85 && attempts < 10) {
+                        newItem.y = Math.random() * (H - 100) + 50;
+                        attempts++;
+                    }
+                } else {
+                    let attempts = 0;
+                    while (Math.abs(newItem.x - safeWaveItem.x) < 85 && attempts < 10) {
+                        newItem.x = Math.random() * (W - 60) + 30;
+                        attempts++;
+                    }
+                }
+            }
+        }
+        items.push(newItem);
+    }
+
+    // гроза мод
+    if (isThunderstormMode) {
+        if (isUpdating) {
+            nextStrikeTimer--;
+            if (nextStrikeTimer <= 0 && thunderstormTimeLeft > 0) {
+                let strikeTargetX = Math.random() * (W - 120) + 60;
+                lightningStrikes.push({
+                    x: strikeTargetX,
+                    y: cat.y,
+                    timer: 50,
+                    maxTimer: 50,
+                    struck: 0
+                });
+                nextStrikeTimer = 80;
+            }
+        }
+
+        for (let sIdx = lightningStrikes.length - 1; sIdx >= 0; sIdx--) {
+            let st = lightningStrikes[sIdx];
+            if (st.timer > 0) {
+                if (isUpdating) st.timer--;
+                let pulse = 0.35 + 0.25 * Math.sin(Date.now() / 70);
+                ctx.save();
+                ctx.fillStyle = "rgba(255, 237, 0, " + (pulse * 0.75) + ")";
+                ctx.beginPath();
+                ctx.arc(st.x, st.y, 40, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 215, 0, " + pulse + ")";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 20px 'ouroboros'";
+                ctx.textAlign = "center";
+                ctx.fillText("⚡", st.x, st.y + 7);
+                ctx.restore();
+            } else if (st.struck < 12) {
+                if (isUpdating) {
+                    if (st.struck === 0) {
+                        playSound(sndThunder);
+                        spawnSparks(st.x, st.y, "#ffed00", 20);
+                        if (Math.abs(cat.x - st.x) < 42) {
+                            thunderstormHit = true;
+                            catRedFlashTimer = 15;
+                            spawnFloatingText(cat.x, cat.y - 20, "-1 ❤️", "#ff4444");
+                            if (!isGodMode) lives -= 1;
+                            if (lives <= 0 && !isGodMode) { triggerGameOver(); return; }
+                        }
+                    }
+                    st.struck++;
+                }
+                ctx.save();
+                ctx.strokeStyle = st.struck < 6 ? "#ffffff" : "#ffed00";
+                ctx.lineWidth = st.struck < 6 ? 6 : 3;
+                ctx.shadowColor = "#ffed00";
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.moveTo(st.x, 0);
+                let segments = 6;
+                let segH = st.y / segments;
+                for (let seg = 1; seg < segments; seg++) {
+                    let segX = st.x + (Math.random() - 0.5) * 36;
+                    ctx.lineTo(segX, seg * segH);
+                }
+                ctx.lineTo(st.x, st.y);
+                ctx.stroke();
+                ctx.restore();
+            } else {
+                lightningStrikes.splice(sIdx, 1);
+            }
+        }
+
+        ctx.fillStyle = "#ffed00";
+        ctx.font = "bold 20px 'ouroboros'";
+        ctx.textAlign = "center";
+        ctx.fillText("ГРОЗА: " + thunderstormTimeLeft + "с", W / 2, 135);
+    }
+
+    // движение и логика предметов
+    let canUpdateItems = isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle');
+    for (let i = items.length - 1; i >= 0; i--) {
+        let item = items[i];
+        if (canUpdateItems) {
+            if (item.shelf) {
+                item.x = item.shelf.x + item.shelfOffsetX;
+                item.y = item.shelf.y - 22;
+                if (item.shelf.y > H + 60 || !isUmbrellaMode) {
+                    items.splice(i, 1);
+                    continue;
+                }
+            } else {
+                let currentSpeed = item.speed * debugSpeedMult;
+                if (item.type === "pumpkin") currentSpeed *= 3.0;
+                if (item.type === "bomb" || item.type === "fire") {
+                    currentSpeed *= (1 + (bombChaos - 1) * 0.4);
+                    if (milkTimer > 0) currentSpeed *= 0.4;
+                }
+                if (isTimeParadox) currentSpeed *= 0.3;
+
+                if (magnetTimer > 0 && item.type !== "bomb" && item.type !== "fire" && item.type !== "knife" && item.type !== "cucumber") {
+                    item.x += (cat.x - item.x) * 0.05;
+                }
+
+                let isBadItem = (item.type === "bomb" || item.type === "fire" || item.type === "knife" || item.type === "cucumber" || item.type === "snowflake");
+                if (jamTimer > 0 && isBadItem) {
+                    if (isNyanMode) {
+                        item.y += (cat.y - item.y) * 0.022;
+                    } else {
+                        item.x += (cat.x - item.x) * 0.022;
+                    }
+                }
+
+                if (isNyanMode) {
+                    item.x -= currentSpeed * 1.5;
+                } else {
+                    if (item.vy !== undefined) {
+                        item.y += item.vy;
+                        item.vy += 0.15; 
+                        if (item.vy > currentSpeed) {
+                            delete item.vy;
+                        }
+                    } else {
+                        item.y += currentSpeed;
+                    }
+                }
+
+                if (item.type === "pumpkin" && item.y >= cat.y) {
+                    playSound(sndError);
+                    if (!isGodMode) {
+                        lives -= 1;
+                        if (lives <= 0) { triggerGameOver(); return; }
+                    }
+                    spawnFloatingText(item.x, cat.y - 20, "-1 ❤️", "#ff4444");
+                    spawnFloatingText(item.x, cat.y - 40, "Blocked!", "#ffed00");
+                    activePumpkin = { x: item.x, y: cat.y, width: 50, holdTimer: 180, opacity: 1.0 };
+                    items.splice(i, 1);
+                    continue;
+                }
+
+                if (isNyanMode ? (item.x < -60) : (item.y > H + 60)) {
+                    if (level === 4 && item.type === "gun") {
+                        bossGunCooldown = 90;
+                    }
+                    items.splice(i, 1);
+                    continue;
+                }
+            }
+        }
+
+        ctx.save();
+        let baseSize = (item.type === "bomb" || item.type === "fire") ? 35 * bombChaos : 32;
+        if (item.type === "fish" || item.type === "christmasTree") baseSize = 42; 
+        let isBadItem = (item.type === "bomb" || item.type === "fire" || item.type === "knife" || item.type === "cucumber" || item.type === "snowflake");
+        if (buffTimer > 0 && !isBadItem) {
+            baseSize *= 1.5;
+        }
+
+        let drawKey = item.type;
+        if (isGlitchMode && Math.random() < 0.1) {
+            const keys = Object.keys(itemsDB);
+            drawKey = keys[Math.floor(Math.random() * keys.length)];
+        }       
+        if (item.type === "icestar") {
+            ctx.shadowColor = "#00ffff";
+            ctx.shadowBlur = 12;
+        }
+
+        if (buffTimer > 0 && !isBadItem) {
+            ctx.shadowColor = "#B22222";
+            ctx.shadowBlur = 15;
+        }
+
+        if (item.type === "bomb" || item.type === "fire") {
+            if (milkTimer > 0) {
+                ctx.shadowColor = "#00ffff";
+                ctx.shadowBlur = 15;
+            }
+        }
+        if (loadedImages[drawKey]) {
+            let img = images[drawKey], aspect = img.width / img.height;
+            let drawW = (aspect > 1) ? baseSize : baseSize * aspect;
+            let drawH = (aspect > 1) ? baseSize / aspect : baseSize;
+            ctx.drawImage(img, item.x - drawW/2, item.y - drawH/2, drawW, drawH);
+        }
+        ctx.filter = "none";
+        ctx.restore();
+
+        if (canUpdateItems && !catDisappeared) {
+            let distCat = Math.hypot(item.x - cat.x, item.y - (cat.y - 10));
+            if (distCat < 45) {
+                handleItemPickup(item, "cat");
+                items.splice(i, 1);
+            }
+        }
+    }
+
+    if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle')) {
+        if (milkTimer > 0) milkTimer--;
+        if (buffTimer > 0) buffTimer--;
+        if (appleTimer > 0) appleTimer--;
+        if (coffeeTimer > 0) coffeeTimer--;
+        if (score >= scoreForNextCoin) { coins++; saveGame(); playSound(sndCoin); scoreForNextCoin += 25; }
+    }
+
+    // циферблат и стрелка
+    if (timeParadoxLeft > 0) {
+        ctx.save();
+        let ms = Date.now() % 1000;
+        let tickShakeX = 0, tickShakeY = 0;
+        if (ms < 100) {
+            tickShakeX = (Math.random() - 0.5) * 4;
+            tickShakeY = (Math.random() - 0.5) * 4;
+        }
+
+        let centerX = W / 2 + tickShakeX;
+        let centerY = H / 2 + tickShakeY;
+        let clockSize = Math.min(W, H) * 0.75;
+
+        ctx.translate(centerX, centerY);
+        ctx.globalAlpha = 0.25;
+
+        if (loadedImages["zyferblat"]) {
+            ctx.drawImage(images["zyferblat"], -clockSize / 2, -clockSize / 2, clockSize, clockSize);
+        }
+
+        if (loadedImages["clockhand"]) {
+            ctx.save();
+            ctx.rotate((clockHandAngle * Math.PI) / 180);
+            ctx.drawImage(images["clockhand"], -clockSize / 2, -clockSize / 2, clockSize, clockSize);
+            ctx.restore();
+        }
+        ctx.restore();
+    }
+
+    // тайм бар баффоы
+    let paradoxTicks = timeParadoxLeft > 0 ? timeParadoxLeft * (300 / 8) : 0; 
+    let activeMaxTimer = Math.max(magnetTimer, candyMultiplierTimer, buffTimer, milkTimer, appleTimer, coffeeTimer, jamTimer, paradoxTicks);
     
-    const mw = 240, mh = 100;
-    const mx = (W - mw) / 2, my = (H - mh) / 2;
+    if (activeMaxTimer > 0) {
+        let barW = 120, barH = 8;
+        let barX = W / 2 - barW / 2, barY = 15;
+        let progress = activeMaxTimer / 300;
+
+        if (timeParadoxLeft > 0) {
+            progress = Math.random(); 
+        }
+
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = "#ffed00";
+        ctx.fillRect(barX, barY, barW * Math.min(1, progress), barH);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barW, barH);
+        ctx.restore();
+    }
+
+    if (isGlitchMode) {
+        ctx.fillStyle = "#ff0055"; ctx.font = "bold 20px 'ouroboros'"; ctx.textAlign = "center";
+        ctx.fillText("GLITCH MODE: " + glitchTimeLeft + "с", W / 2, 110);
+    }
     
+    if (isCyberMode && level !== 4) {
+        ctx.fillStyle = "#ffed00"; ctx.font = "bold 20px 'ouroboros'"; ctx.textAlign = "center";
+        ctx.fillText("ВРЕМЯ ПОСТРЕЛЯТЬ!!!: " + cyberTimeLeft + "с", W / 2, 110);
+    } else if (isCyberMode && level === 4) {
+        ctx.fillStyle = "#ffed00"; ctx.font = "bold 20px 'ouroboros'"; ctx.textAlign = "center";
+        ctx.fillText("ЕБАШЬ ПО БОССУ ДОРОГАЯ!!: " + cyberTimeLeft + "с", W / 2, 115);
+    }
+    
+    if (isUpdating) {
+        if (score !== lastScore) {
+            let diff = score - lastScore;
+            let text = diff > 0 ? "+" + diff : diff;
+            let color = diff > 0 ? "#a8e6cf" : "#ff4444";
+            spawnFloatingText(110, 40, text, color);
+            lastScore = score;
+        }
+        if (coins !== lastCoins) {
+            let diff = coins - lastCoins;
+            let text = diff > 0 ? "+" + diff : diff;
+            let color = diff > 0 ? "#ffed00" : "#ff4444";
+            spawnFloatingText(110, 90, text, color);
+            lastCoins = coins;
+        }
+        if (catRedFlashTimer > 0) catRedFlashTimer--;
+        if (freezeIntensity > 0) {
+            if (freezeTimer > 0) freezeTimer--;
+            else {
+                freezeIntensity--;
+                freezeTimer = 150;
+            }
+        }      
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            let ft = floatingTexts[i];
+            ft.y += ft.vy;
+            ft.alpha -= 0.025;
+            if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+        }
+    }
+
+    floatingTexts.forEach(ft => {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, ft.alpha);
+        ctx.fillStyle = ft.color;
+        ctx.shadowColor = "#000000";
+        ctx.shadowBlur = 4;
+        ctx.font = "bold 18px 'ouroboros'";
+        ctx.textAlign = "center";
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
+    });
+
+    if (proposalBannerTimer > 0) {
+        ctx.save();
+        ctx.fillStyle = "#ff85a2";
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 10;
+        ctx.font = "bold 24px 'ouroboros'"; ctx.textAlign = "center";
+        ctx.fillText("женись на мне 💋💋💋", W / 2, 160);
+        ctx.restore();
+    }
+
+    // панель
+    ctx.font = "bold 18px 'ouroboros'"; ctx.textAlign = "left"; ctx.fillStyle = "white";
+    ctx.fillText("⭐ " + score, 20, 40); 
+    ctx.fillText("❤️ " + lives, 20, 65);
+    ctx.fillText("🪙" + coins, 20, 90);
+    ctx.textAlign = "right"; ctx.fillText("🏆 " + highScore, W - 20, 40);
+    ctx.textAlign = "center"; ctx.fillStyle = "#FFEEC0";
+    ctx.fillText(levelSettings[level].title.toUpperCase(), W / 2, 40);
+    
+    if (freezeIntensity > 0) {
+        ctx.save();
+        ctx.pointerEvents = "none";
+        ctx.globalAlpha = Math.min(freezeIntensity * 0.25, 0.8); 
+        if (loadedImages["freeze_screen"]) {
+            ctx.drawImage(images["freeze_screen"], 0, 0, W, H); 
+        }
+        ctx.restore();
+    }
+
+    if (isGlitchMode) {
+        glitchPopups.forEach(p => {
+            ctx.fillStyle = "#c0c0c0"; ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.strokeRect(p.x, p.y, p.w, p.h);
+            ctx.fillStyle = "#000080"; ctx.fillRect(p.x + 2, p.y + 2, p.w - 4, 18);
+            ctx.fillStyle = "#fff"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left";
+            ctx.fillText(p.title, p.x + 5, p.y + 14);
+            ctx.fillStyle = "#000"; ctx.font = "12px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText("An error occurred!", p.x + p.w / 2, p.y + 48);
+            ctx.fillStyle = "#e0e0e0"; ctx.fillRect(p.x + p.w / 2 - 20, p.y + 62, 40, 20);
+            ctx.strokeRect(p.x + p.w / 2 - 20, p.y + 62, 40, 20);
+            ctx.fillStyle = "#000"; ctx.fillText("OK", p.x + p.w / 2, p.y + 76);
+        });
+    }
+
+    if (flashAlpha > 0) {
+        ctx.save();
+        ctx.fillStyle = "rgba(255, 255, 255, " + Math.min(1, Math.max(0, flashAlpha)) + ")";
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+    }
+
+    if (bossCutscenePhase === 'dialog1') {
+        drawBossDialog(dialog1Texts[bossDialogIndex]);
+    } else if (bossCutscenePhase === 'dialog2') {
+        drawBossDialog(dialog2Texts[bossDialogIndex]);
+    }
+}
+
+function drawMenu() {
+    ctx.font = "bold 18px 'ouroboros'"; ctx.textAlign = "left"; ctx.fillStyle = "white";
+    ctx.fillText("🪙" + coins, 20, 40);
+    ctx.textAlign = "center"; ctx.fillStyle = "#ff85a2"; ctx.font = "bold 24px 'ouroboros'";
+    ctx.fillText("С днём рождения, любимая ♡♡", W / 2, H / 2 - 140);
+    drawBtn(W / 2, H / 2 - 60, "Играть", "#ff85a2");
+    drawBtn(W / 2, H / 2 + 10, "Коллекция", "#ff85a2");
+    drawBtn(W / 2, H / 2 + 80, "Магазин", "#ff85a2");
+}
+
+function drawPauseBtn() {
+    if (bossCutscenePhase && bossCutscenePhase !== 'battle') return;
+    const x = W - 40, y = H - 40, radius = 20;
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "white";
-    ctx.fillRect(mx, my, mw, mh);
-    ctx.strokeStyle = "#ff85a2";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(mx, my, mw, mh);
-    
-    ctx.fillStyle = "#111";
-    ctx.textAlign = "center";
-    ctx.font = "16px 'ouroboros'";
-    wrapText("Скоро будет...", W / 2, H / 2 + 5, mw - 20, 20);
+    ctx.fillRect(x - 6, y - 8, 4, 16); ctx.fillRect(x + 2, y - 8, 4, 16);
+    ctx.restore();
+}
+
+function getEncryptedText(text) {
+    const symbols = "{}$°+₽*\\£%#@!?&~<>";
+    let result = "";
+    for (let i = 0; i < text.length; i++) {
+        result += (text[i] === " ") ? " " : symbols[text.charCodeAt(i) % symbols.length];
+    }
+    return result;
+}
+
+function drawShop() {
+    ctx.textAlign = "center"; ctx.fillStyle = "white"; ctx.font = "bold 25px 'ouroboros'";
+    ctx.fillText("Магазин", W / 2, 60);
+
+    ctx.font = "bold 20px 'ouroboros'"; ctx.fillStyle = "#FFEEC0";
+    ctx.fillText("Твой баланс: 🪙 " + coins, W / 2, 95);
+
+    boxScale += (1.0 - boxScale) * 0.2;
+    let baseSize = 120, drawSize = baseSize * boxScale, boxX = W / 2, boxY = H / 2 - 20;
+
+    if (isOpeningBox) {
+        boxX += (Math.random() - 0.5) * 10;
+        boxY += (Math.random() - 0.5) * 10;
+    }
+
+    if (loadedImages.box) ctx.drawImage(images.box, boxX - drawSize / 2, boxY - drawSize / 2, drawSize, drawSize);
+    else {
+        ctx.fillStyle = "#ff85a2"; ctx.fillRect(boxX - drawSize / 2, boxY - drawSize / 2, drawSize, drawSize);
+        ctx.fillStyle = "white"; ctx.font = "bold 16px 'ouroboros'"; ctx.fillText("Коробка", boxX, boxY + 5);
+    }
+
+    if (isOpeningBox) {
+        dropTimer--;
+        let tempSkin = getRandomSkinKey();
+        if (loadedImages[tempSkin]) ctx.drawImage(images[tempSkin], W / 2 - 25, H / 2 + 60, 50, 50);
+
+        if (dropTimer <= 0) {
+            isOpeningBox = false;
+            let skinData = skinsDB[rolledSkinKey] || { name: "Неизвестно", unlocked: false };
+            let isDuplicate = skinData.unlocked;
+
+            if (!isDuplicate) { 
+                skinsDB[rolledSkinKey].unlocked = true; 
+                saveCollection(); 
+                playSound(sndBuy); 
+                pityCounter = 0;
+                localStorage.setItem("catPityCounter", pityCounter);
+            } 
+            else { coins += 15; saveGame(); playSound(sndCoin); }
+
+            rewardModal = { key: rolledSkinKey, name: skinData.name, isDuplicate: isDuplicate };
+        }
+    } else if (!rewardModal) {
+        ctx.font = "bold 18px 'ouroboros'";
+        if (coins < 30) { ctx.fillStyle = "#ff4444"; ctx.fillText("Нужно 30 🪙 (не хватает!)", W / 2, H / 2 + 80); } 
+        else {
+            ctx.fillStyle = "#a8e6cf"; ctx.fillText("Цена: 30 🪙", W / 2, H / 2 + 75);
+            ctx.font = "14px 'ouroboros'"; ctx.fillStyle = "#fff";
+            ctx.fillText(boxClickCount === 1 ? "Тапни ещё разок 💋" : "Тапни 2 раза, что бы открыть 💋", W / 2, H / 2 + 100);
+        }
+    }
+
+    if (rewardModal) {
+        ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(0, 0, W, H);
+        const mw = 280, mh = 240, mx = (W - mw) / 2, my = (H - mh) / 2;
+        ctx.fillStyle = "white"; ctx.fillRect(mx, my, mw, mh);
+        ctx.strokeStyle = "#ff85a2"; ctx.lineWidth = 4; ctx.strokeRect(mx, my, mw, mh);
+
+        ctx.fillStyle = "#111"; ctx.textAlign = "center"; ctx.font = "bold 20px 'ouroboros'";
+        ctx.fillText(rewardModal.isDuplicate ? "Дубликат!" : "Новый скин!~★", W / 2, my + 35);
+
+        if (loadedImages[rewardModal.key]) ctx.drawImage(images[rewardModal.key], W / 2 - 30, my + 45, 60, 60);
+
+        ctx.font = "bold 18px 'ouroboros'"; ctx.fillStyle = "#ff85a2";
+        ctx.fillText(rewardModal.name, W / 2, my + 130);
+
+        ctx.font = "14px 'ouroboros'"; ctx.fillStyle = "#555";
+        let modalText = rewardModal.isDuplicate ? "Скинчик уже в наличии, возврат +15 🪙" : "Новый скинчик в коллекции 💋";
+        wrapText(modalText, W / 2, my + 155, mw - 20, 18);
+
+        ctx.fillStyle = "#ff85a2"; ctx.font = "16px 'ouroboros'";
+        ctx.fillText("Забрать", W / 2, my + 215);
+    }
+
+    if (!rewardModal && !isOpeningBox) {
+        ctx.fillStyle = "#ff5476"; ctx.font = "18px 'ouroboros'";
+        ctx.fillText("назад в меню", W / 2, H - 40);
+    }
 }
 
 function drawCollection() {
-    ctx.textAlign = "center"; ctx.fillStyle = "white"; ctx.font = "bold 25px 'ouroboros'"; 
-    ctx.fillText("Твои находки", W / 2, 60);
-    const keys = Object.keys(itemsDB), size = 50, gap = 20, cols = 4;
-    const startX = (W - (cols * size + (cols - 1) * gap)) / 2, startY = 120;
+    ctx.textAlign = "center"; ctx.font = "bold 15px 'ouroboros'";
+    const tabW = 95, tabH = 32, gap = 8, totalW = tabW * 3 + gap * 2, startTabX = (W - totalW) / 2;
 
-    keys.forEach((key, i) => {
-        let x = startX + (i % cols) * (size + gap), y = startY + Math.floor(i / cols) * (size + gap + 20);
-        if (itemsDB[key].unlocked && loadedImages[key]) {
-            let img = images[key];
-            let aspect = img.width / img.height;
-            let drawW, drawH;
-            if (aspect > 1) { drawW = size; drawH = size / aspect; } 
-            else { drawH = size; drawW = size * aspect; }
+    ctx.fillStyle = (currentTab === "items") ? "#ff85a2" : "#555";
+    ctx.fillRect(startTabX, 55, tabW, tabH);
+    ctx.fillStyle = "white"; ctx.fillText("Предметы", startTabX + tabW / 2, 76);
+
+    ctx.fillStyle = (currentTab === "skins") ? "#ff85a2" : "#555";
+    ctx.fillRect(startTabX + tabW + gap, 55, tabW, tabH);
+    ctx.fillStyle = "white"; ctx.fillText("Скины", startTabX + tabW + gap + tabW / 2, 76);
+
+    ctx.fillStyle = (currentTab === "achievements") ? "#ff85a2" : "#555";
+    ctx.fillRect(startTabX + (tabW + gap) * 2, 55, tabW, tabH);
+    ctx.fillStyle = "white"; ctx.fillText("Ачивки", startTabX + (tabW + gap) * 2 + tabW / 2, 76);
+
+    let activeDB = (currentTab === "skins") ? skinsDB : ((currentTab === "achievements") ? achievementsDB : itemsDB);
+    const keys = Object.keys(activeDB);
+    let totalPages = Math.max(1, Math.ceil(keys.length / 16));
+
+    if (totalPages >= 3) {
+        ctx.fillStyle = (collectionPage === 1) ? "#ff85a2" : "#777";
+        ctx.fillRect(W / 2 - 60, 95, 32, 22);
+        ctx.fillStyle = "white"; ctx.font = "12px 'ouroboros'"; ctx.fillText("1", W / 2 - 44, 110);
+
+        ctx.fillStyle = (collectionPage === 2) ? "#ff85a2" : "#777";
+        ctx.fillRect(W / 2 - 16, 95, 32, 22);
+        ctx.fillStyle = "white"; ctx.fillText("2", W / 2, 110);
+
+        ctx.fillStyle = (collectionPage === 3) ? "#ff85a2" : "#777";
+        ctx.fillRect(W / 2 + 28, 95, 32, 22);
+        ctx.fillStyle = "white"; ctx.fillText("3", W / 2 + 44, 110);
+    } else if (totalPages === 2) {
+        ctx.fillStyle = (collectionPage === 1) ? "#ff85a2" : "#777";
+        ctx.fillRect(W / 2 - 50, 95, 35, 22);
+        ctx.fillStyle = "white"; ctx.font = "12px 'ouroboros'"; ctx.fillText("1", W / 2 - 32, 110);
+
+        ctx.fillStyle = (collectionPage === 2) ? "#ff85a2" : "#777";
+        ctx.fillRect(W / 2 + 15, 95, 35, 22);
+        ctx.fillStyle = "white"; ctx.fillText("2", W / 2 + 32, 110);
+    }
+
+    const pageSize = 16;
+    const pageKeys = keys.slice((collectionPage - 1) * pageSize, collectionPage * pageSize);
+
+    const size = 48, colGap = 15, cols = 4;
+    const startX = (W - (cols * size + (cols - 1) * colGap)) / 2, startY = 125;
+
+    pageKeys.forEach((key, i) => {
+        let x = startX + (i % cols) * (size + colGap);
+        let y = startY + Math.floor(i / cols) * (size + colGap + 12);
+        let itemData = activeDB[key];
+
+        if (currentTab === "achievements") {
+            ctx.fillStyle = itemData.unlocked ? "#ffed00" : "rgba(0,0,0,0.5)";
+            ctx.beginPath(); ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = itemData.unlocked ? "#111" : "#fff"; ctx.font = "20px 'ouroboros'";
+            ctx.fillText(itemData.unlocked ? "🏆" : "🔒", x + size/2, y + size/2 + 7);
+        } 
+        else if (itemData.unlocked && loadedImages[key]) {
+            let img = images[key], aspect = img.width / img.height;
+            let drawW = (aspect > 1) ? size : size * aspect;
+            let drawH = (aspect > 1) ? size / aspect : size;
             ctx.drawImage(img, x + (size - drawW)/2, y + (size - drawH)/2, drawW, drawH);
         } else {
-            ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.beginPath(); ctx.arc(x+25, y+25, 25, 0, 7); ctx.fill();
-            ctx.fillStyle = "white"; ctx.font = "20px 'ouroboros'"; ctx.fillText("?", x+25, y+35);
+            ctx.fillStyle = "rgba(0,0,0,0.5)"; 
+            ctx.beginPath(); ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "white"; ctx.font = "20px 'ouroboros'"; ctx.fillText("?", x + size/2, y + size/2 + 7);
         }
     });
 
-    if (selectedItem) {
-        ctx.fillStyle = "white"; 
-        ctx.font = "bold 18px 'ouroboros'"; 
-        ctx.fillText(itemsDB[selectedItem].name, W / 2, H - 160);
+    const cardW = W - 30, cardH = 130, cardX = 15, cardY = H - 180;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+    ctx.strokeStyle = "#ff85a2"; ctx.lineWidth = 2;
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeRect(cardX, cardY, cardW, cardH);
+
+    if (selectedItem && activeDB[selectedItem]) {
+        let itemData = activeDB[selectedItem];
+        ctx.fillStyle = "white"; ctx.font = "bold 16px 'ouroboros'"; 
         
-        ctx.font = "16px 'ouroboros'"; 
-        let txt = itemsDB[selectedItem].unlocked ? itemsDB[selectedItem].desc : "Ты ещё не знаешь что это, дорогая.";
-        wrapText(txt, W / 2, H - 130, W - 40, 20); 
+        if (currentTab === "achievements") {
+            ctx.fillText(itemData.name, W / 2, cardY + 22);
+            ctx.font = "12px 'ouroboros'";
+            wrapText(itemData.unlocked ? itemData.desc : itemData.secretDesc, W / 2, cardY + 44, cardW - 20, 15);
+
+            if (itemData.rewardSkin) {
+                ctx.fillStyle = "#ffed00"; ctx.font = "bold 13px 'ouroboros'";
+                ctx.fillText(itemData.unlocked ? "Награда: Скин получен!" : "Награда: Секретный скин", W / 2, cardY + 112);
+            }
+        } else {
+            ctx.fillText(itemData.unlocked ? itemData.name : getEncryptedText(itemData.name), W / 2, cardY + 22);
+            ctx.font = "12px 'ouroboros'"; 
+            wrapText(itemData.unlocked ? itemData.desc : (itemData.isSkin ? "Ты пока ещё не знаешь кто это, дорогая." : "Ты ещё не знаешь что это, дорогая."), W / 2, cardY + 42, cardW - 24, 15); 
+
+            if (currentTab === "skins" && itemData.unlocked) {
+                let isEquipped = (currentSkin === selectedItem);
+                drawBtn(W / 2, cardY + 104, isEquipped ? "Экипировано" : "Экипировать", isEquipped ? "#4CAF50" : "#ff85a2", 140, 28, 14);
+            }
+        }
+    } else {
+        ctx.fillStyle = "#aaa"; ctx.font = "14px 'ouroboros'";
+        ctx.fillText("Нажми, чтобы посмотреть описание", W / 2, cardY + 65);
     }
-    ctx.fillStyle = "#ff5476"; ctx.font = "18px 'ouroboros'"; ctx.fillText("назад в меню", W / 2, H - 40);
+
+    ctx.fillStyle = "#ff5476"; ctx.font = "18px 'ouroboros'"; 
+    ctx.fillText("назад в меню", W / 2, H - 25);
 }
 
 function drawGameOver() {
@@ -431,27 +3258,106 @@ function drawGameOver() {
     ctx.fillStyle = "#ff4444"; ctx.font = "bold 40px 'ouroboros'"; ctx.fillText("game over", W / 2, H / 2 - 80);
     ctx.fillStyle = "white"; ctx.font = "20px 'ouroboros', sans-serif";
     ctx.fillText("(но ты всё равно умничка 💋)", W / 2, H / 2 - 30);
-    ctx.font = "18px 'ouroboros'";
-    ctx.fillText("Счёт: " + score, W / 2, H / 2 + 10);
-    drawBtn(W / 2, H / 2 + 90, "Заново", "#ff85a2");
-    drawBtn(W / 2, H / 2 + 150, "В меню", "#ffb7c5");
+    ctx.font = "18px 'ouroboros'"; ctx.fillText("Счёт: " + score, W / 2, H / 2 + 10);
+
+    if (!hasContinued) {
+        drawBtn(W / 2, H / 2 + 60, "Продолжить 5🪙", coins >= 5 ? "#4CAF50" : "#888888", 180, 42, 16);
+        drawBtn(W / 2, H / 2 + 115, "Заново", "#ff85a2", 160, 40, 20);
+        drawBtn(W / 2, H / 2 + 170, "В меню", "#ffb7c5", 160, 40, 20);
+    } else {
+        drawBtn(W / 2, H / 2 + 90, "Заново", "#ff85a2", 160, 40, 20);
+        drawBtn(W / 2, H / 2 + 150, "В меню", "#ffb7c5", 160, 40, 20);
+    }
+}
+
+function drawVictory() {
+    if (Math.random() < 0.25) {
+        spawnConfetti(Math.random() * W, -10, 8);
+    }
+    for (let i = sparkParticles.length - 1; i >= 0; i--) {
+        let p = sparkParticles[i];
+        p.x += p.vx; p.y += p.vy;
+        p.alpha -= 0.015;
+        if (p.alpha <= 0 || p.y > H + 20) { sparkParticles.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        ctx.restore();
+    }
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffed00";
+    ctx.shadowColor = "#ff5476";
+    ctx.shadowBlur = 18;
+    ctx.font = "bold 38px 'ouroboros'";
+    ctx.fillText("ПОБЕДА!!!!", W / 2, H / 2 - 95);
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "white";
+    ctx.font = "20px 'ouroboros'";
+    ctx.fillText("Моя сладкая, невероятная жена победила финального босса!!", W / 2, H / 2 - 50);
+
+    ctx.fillStyle = "#ffb7c5";
+    ctx.font = "16px 'ouroboros'";
+    ctx.fillText("Я в тебе и не сомневалась 💋)", W / 2, H / 2 - 20);
+
+    ctx.fillStyle = "#a8e6cf";
+    ctx.font = "bold 18px 'ouroboros'";
+    ctx.fillText("Итоговый счёт: " + score, W / 2, H / 2 + 20);
+
+    ctx.fillStyle = "#ffed00";
+    ctx.fillText("Награда за босса: +50 🪙", W / 2, H / 2 + 50);
+
+    ctx.fillStyle = "#ff5476";
+    ctx.font = "bold 15px 'ouroboros'";
+    ctx.fillText("🏆 Достижение: Победить босса!", W / 2, H / 2 + 76);
+    ctx.fillText("★ Секретный скин «Солнышко» получен!", W / 2, H / 2 + 98);
+
+    drawBtn(W / 2, H / 2 + 140, "В меню", "#ff85a2", 160, 42, 20);
 }
 
 function loop() {
     ctx.clearRect(0, 0, W, H);
     let grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, "#a8e6cf"); grad.addColorStop(1, "#ffd3b6");
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+    if (level === 4) {
+        drawBossBackground();
+    } else if (isNyanMode) {
+        drawNyanBackground();
+    } else if (isGlitchMode) {
+        grad.addColorStop(0, "#2b0000"); grad.addColorStop(1, "#002b2b");
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.lineWidth = 2;
+        let shift = (Math.random() - 0.5) * 10;
+        for (let y = 0; y < H; y += 20) { ctx.beginPath(); ctx.moveTo(0, y + shift); ctx.lineTo(W, y + shift); ctx.stroke(); }
+    } else if (isCyberMode) {
+        grad.addColorStop(0, "#0d0221"); grad.addColorStop(1, "#261447");
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = "rgba(255, 0, 127, 0.15)"; ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    } else if (level === 2) {
+        grad.addColorStop(0, "#1c3b57"); grad.addColorStop(1, "#404b56");
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    } else if (level === 3) {
+        drawAutumnBackground();
+    } else {
+        grad.addColorStop(0, "#a8e6cf"); grad.addColorStop(1, "#ffd3b6");
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);   
+    }
     
-    drawPetals();
+    if (!isCyberMode && !isNyanMode && level !== 4) drawPetals();
+
     if (state === "menu") drawMenu();
     else if (state === "collection") drawCollection();
-    else if (state === "game") updateGame();
+    else if (state === "shop") drawShop();
+    else if (state === "game") { renderGame(true); drawPauseBtn(); }
+    else if (state === "pause") renderGame(false);
     else if (state === "gameover") drawGameOver();
+    else if (state === "victory") drawVictory();
 
-    if (showUpdateModal) drawModal();
-
-    drawMuteBtn();
+    drawAchievementNotification();
     requestAnimationFrame(loop);
 }
 
