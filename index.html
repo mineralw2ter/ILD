@@ -2597,15 +2597,15 @@ function renderGame(isUpdating) {
         let newItem = { x: Math.random() * (W - 60) + 30, y: -50, type: "star", points: 1, speed: (2.5 + Math.random() * 3) * speedMult };
 
         if (level === 3) {
-            if (typeRand < 0.015)      { newItem.type = "lightning"; newItem.points = 0; }
-            else if (typeRand < 0.030) { newItem.type = "umbrella"; newItem.points = 0; }
+            if (typeRand < 0.009) { newItem.type = "umbrella"; newItem.points = 0; }
+            else if (typeRand < 0.011)      { newItem.type = "lightning"; newItem.points = 0; }
+            else if (typeRand < 0.016) { newItem.type = "pumpkin"; newItem.points = 0; }
             else if (typeRand < 0.050) { newItem.type = "goldenCoin"; newItem.points = 0; }
             else if (typeRand < 0.065) { newItem.type = "pie"; newItem.points = 2; }
             else if (typeRand < 0.085) { newItem.type = "mapleLeaf"; newItem.points = 4; }
             else if (typeRand < 0.100) { newItem.type = "apple"; newItem.points = 2; }
             else if (typeRand < 0.115) { newItem.type = "appleJam"; newItem.points = 6; }
             else if (typeRand < 0.130) { newItem.type = "coffee"; newItem.points = 5; }
-            else if (typeRand < 0.155) { newItem.type = "pumpkin"; newItem.points = 0; }
             else if (typeRand < 0.395) { newItem.type = "knife"; newItem.points = -2; }
             else                       { newItem.type = "goldenStar"; newItem.points = 3; }
         } 
@@ -2613,8 +2613,8 @@ function renderGame(isUpdating) {
             if (typeRand < 0.0008)      { newItem.type = "gift"; newItem.points = 20; }    
             else if (typeRand < 0.004) { newItem.type = "remoteController"; newItem.points = 0; }
             else if (typeRand < 0.007) { newItem.type = "ring"; newItem.points = 8; } 
-            else if (typeRand < 0.017) { newItem.type = "gun"; newItem.points = 0; }  
-            else if (typeRand < 0.025) { newItem.type = "cursor"; newItem.points = 0; }  
+            else if (typeRand < 0.012) { newItem.type = "gun"; newItem.points = 0; }  
+            else if (typeRand < 0.015) { newItem.type = "cursor"; newItem.points = 0; }  
             else if (typeRand < 0.045) { newItem.type = "silverCoin"; newItem.points = 0; }  
             else if (typeRand < 0.060) { newItem.type = "christmasTree"; newItem.points = 5; }  
             else if (typeRand < 0.075) { newItem.type = "mistletoe"; newItem.points = 2; }   
