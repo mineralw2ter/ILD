@@ -105,7 +105,7 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const pauseOverlay = document.getElementById("pause-overlay");
 
-// КАДРЫ ЕБУЧИЕ
+// КАДРЫ
 let dt = 1.0;
 let lastFrameTime = performance.now();
 
@@ -347,10 +347,17 @@ const loadedImages = {};
 for (let key in imgSources) {
     images[key] = new Image();
     images[key].src = imgSources[key];
-    images[key].onload = () => { loadedImages[key] = true; };
+    images[key].onload = () => { 
+        if (images[key].naturalWidth > 0 && images[key].naturalHeight > 0) {
+            loadedImages[key] = true; 
+        }
+    };
+    images[key].onerror = () => {
+        loadedImages[key] = false;
+    };
 }
 
-// аудио (УЧЕНЫЕ ЗАПИСАЛИ ЗВУКИ ИЗ АДА!!!!)
+// аудио
 let bgMusic = new Audio('music.mp3'); bgMusic.loop = true;
 const sndWinterBg = new Audio('winter.mp3'); sndWinterBg.loop = true;
 const sndAutumnBg = new Audio('autumn.mp3'); sndAutumnBg.loop = true;
@@ -380,8 +387,10 @@ const sndThunder = new Audio('thunder.wav');
 const sndDisappearance = new Audio('disappearance.wav');
 const sndTransition = new Audio('transition.wav');
 
-let musicVolume = parseFloat(localStorage.getItem("musicVol")) || 0.4;
-let sfxVolume = parseFloat(localStorage.getItem("sfxVol")) || 0.25;
+let savedMusicVol = localStorage.getItem("musicVol");
+let musicVolume = (savedMusicVol !== null && !isNaN(parseFloat(savedMusicVol))) ? parseFloat(savedMusicVol) : 0.4;
+let savedSfxVol = localStorage.getItem("sfxVol");
+let sfxVolume = (savedSfxVol !== null && !isNaN(parseFloat(savedSfxVol))) ? parseFloat(savedSfxVol) : 0.25;
 let currentBgAudio = bgMusic;
 
 const allSnd = [sndCollect, sndWinterCollect, sndBurn, sndExplode, sndJump, sndClick, sndCoin, sndBuy, sndTap, sndBoom, sndShot, sndAchievement, sndMeow, sndPie, sndExtraLife, sndError, sndThunder, sndDisappearance, sndTransition];
@@ -404,10 +413,16 @@ sfxSlider.oninput = (e) => {
 };
 
 function playSound(sound) {
+    if (!sound) return;
     try {
         let clone = sound.cloneNode();
         clone.volume = Math.min(1, sfxVolume * 0.7);
-        clone.play().catch(() => {});
+        let playPromise = clone.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                clone.onended = () => { clone.src = ""; clone = null; };
+            }).catch(() => {});
+        }
     } catch(e){}
 }
 
@@ -458,7 +473,7 @@ function getRandomSkinKey(isPity = false) {
 }
 
 const cat = { x: 0, y: 0, w: 19, h: 17, scale: 4 };
-let W, H, dpr = window.devicePixelRatio || 1;
+let W = window.innerWidth, H = window.innerHeight, dpr = window.devicePixelRatio || 1;
 let state = "menu", items = [], score = 0, highScore = 0, lastScore = 0, lastCoins = 0, pityCounter = 0;
 const PITY_LIMIT = 5;
 let level = 1, lives = 3, bombChaos = 1.0, milkTimer = 0, buffTimer = 0, scoreForNextCoin = 25;
@@ -523,9 +538,7 @@ function shootBullet() {
     } else {
         bullets.push({ x: cat.x, y: cat.y - (cat.h * cat.scale) / 2, vx: 0, vy: -12, radius: 4 });
     }
-    let shotClone = sndShot.cloneNode();
-    shotClone.volume = Math.min(sfxVolume, 0.5);
-    shotClone.play().catch(() => {});
+    playSound(sndShot);
 }
 
 function unlockAchievement(id) {
@@ -563,7 +576,7 @@ function drawAchievementNotification() {
         currentAchievementPopup = achievementQueue.shift();
         achievementPopupTimer = 180;
     }
-    if (currentAchievementPopup) {
+    if (currentAchievementPopup && currentAchievementPopup.name) {
         achievementPopupTimer -= dt;
         let popupY = -70;
         if (achievementPopupTimer > 150) popupY = -70 + (180 - achievementPopupTimer) * 3; 
@@ -599,13 +612,14 @@ function drawAchievementNotification() {
 
 function stopAllBgMusic() {
     [bgMusic, sndWinterBg, sndAutumnBg, sndCyberBg, sndTimeBg, sndNyanBg, sndGlitchBg, sndBossBg].forEach(m => {
-        m.pause();
+        try { m.pause(); } catch(e){}
     });
 }
 
 function playBgTrack(targetTrack) {
+    if (!targetTrack) return;
     if (currentBgAudio !== targetTrack) {
-        if (currentBgAudio) currentBgAudio.pause();
+        if (currentBgAudio) { try { currentBgAudio.pause(); } catch(e){} }
         currentBgAudio = targetTrack;
         currentBgAudio.volume = musicVolume;
         currentBgAudio.play().catch(() => {});
@@ -619,7 +633,7 @@ function playBgTrack(targetTrack) {
 
 function updateModeMusic() {
     if (state !== "game") {
-        if (currentBgAudio) currentBgAudio.pause();
+        if (currentBgAudio) { try { currentBgAudio.pause(); } catch(e){} }
         return;
     }
 
@@ -658,7 +672,7 @@ function triggerBossIntro() {
 }
 
 function spawnFloatingText(x, y, text, color) {
-    floatingTexts.push({ x: x, y: y, text: text, color: color, alpha: 1.0, vy: -1.5 });
+    floatingTexts.push({ x: x, y: y, text: String(text), color: color, alpha: 1.0, vy: -1.5 });
 }
 
 function spawnSparks(x, y, color = "#ffed00", count = 8) {
@@ -714,12 +728,14 @@ function drawAutumnBackground() {
     if (loadedImages['spiderWeb']) {
         let img = images['spiderWeb'];
         let webSize = Math.min(W, H) * 0.35;
-        ctx.drawImage(img, 0, 0, webSize, webSize);
-        ctx.save();
-        ctx.translate(W, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, 0, webSize, webSize);
-        ctx.restore();
+        if (webSize > 0 && img.width > 0) {
+            ctx.drawImage(img, 0, 0, webSize, webSize);
+            ctx.save();
+            ctx.translate(W, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(img, 0, 0, webSize, webSize);
+            ctx.restore();
+        }
     }
 }
 
@@ -734,9 +750,10 @@ function drawBossBackground() {
     let portalX = W / 2;
     let portalY = Math.max(90, H * 0.22);
     let pulse = 0.5 + 0.15 * Math.sin(Date.now() / 300);
-    let portalR = Math.min(W * 0.4, 130);
+    let portalR = Math.max(20, Math.min(W * 0.4, 130));
     
-    let portalGrad = ctx.createRadialGradient(portalX, portalY, 15, portalX, portalY, portalR * 1.5);
+    let outerR = portalR * 1.5;
+    let portalGrad = ctx.createRadialGradient(portalX, portalY, 15, portalX, portalY, outerR);
     portalGrad.addColorStop(0, "rgba(255, 40, 100, " + (0.5 * pulse) + ")");
     portalGrad.addColorStop(0.6, "rgba(140, 15, 80, " + (0.3 * pulse) + ")");
     portalGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
@@ -744,7 +761,7 @@ function drawBossBackground() {
     ctx.save();
     ctx.fillStyle = portalGrad;
     ctx.beginPath();
-    ctx.arc(portalX, portalY, portalR * 1.5, 0, Math.PI * 2);
+    ctx.arc(portalX, portalY, outerR, 0, Math.PI * 2);
     ctx.fill();
 
     if (Math.random() < 0.18 * dt) {
@@ -794,7 +811,11 @@ function activateNyanMode() {
     isNyanMode = true; nyanTimeLeft = 15; targetCatY = null;
     updateModeMusic();
     if (nyanTimer) clearInterval(nyanTimer);
-    nyanTimer = setInterval(() => { nyanTimeLeft--; if (nyanTimeLeft <= 0) deactivateNyanMode(); }, 1000);
+    nyanTimer = setInterval(() => { 
+        if (state !== "game") return;
+        nyanTimeLeft--; 
+        if (nyanTimeLeft <= 0) deactivateNyanMode(); 
+    }, 1000);
 }
 
 function deactivateNyanMode() {
@@ -818,6 +839,7 @@ function activateTimeParadox() {
     updateModeMusic();
     if (timeParadoxTimer) clearInterval(timeParadoxTimer);
     timeParadoxTimer = setInterval(() => { 
+        if (state !== "game") return;
         timeParadoxLeft--; 
         clockHandAngle += 30;
         if (timeParadoxLeft <= 0) deactivateTimeParadox(); 
@@ -825,7 +847,10 @@ function activateTimeParadox() {
 }
 
 function deactivateTimeParadox() {
-    isTimeParadox = false; if (timeParadoxTimer) clearInterval(timeParadoxTimer); canvas.style.filter = "none"; updateModeMusic();
+    isTimeParadox = false; 
+    if (timeParadoxTimer) clearInterval(timeParadoxTimer); 
+    canvas.style.filter = "none"; 
+    updateModeMusic();
 }
 
 function activateCyberMode() {
@@ -838,8 +863,14 @@ function activateCyberMode() {
     updateModeMusic();
     if (cyberTimer) clearInterval(cyberTimer);
     if (autoShootInterval) clearInterval(autoShootInterval);
-    cyberTimer = setInterval(() => { cyberTimeLeft--; if (cyberTimeLeft <= 0) deactivateCyberMode(); }, 1000);
-    autoShootInterval = setInterval(() => { if (isCyberMode && state === "game") shootBullet(); }, 300);
+    cyberTimer = setInterval(() => { 
+        if (state !== "game") return;
+        cyberTimeLeft--; 
+        if (cyberTimeLeft <= 0) deactivateCyberMode(); 
+    }, 1000);
+    autoShootInterval = setInterval(() => { 
+        if (isCyberMode && state === "game") shootBullet(); 
+    }, 300);
 }
 
 function deactivateCyberMode() {
@@ -865,6 +896,7 @@ function activateGlitchMode() {
     updateModeMusic();
     if (glitchTimer) clearInterval(glitchTimer);
     glitchTimer = setInterval(() => {
+        if (state !== "game") return;
         glitchTimeLeft--;
         if (Math.random() < 0.4) spawnGlitchPopup();
         if (glitchTimeLeft <= 0) deactivateGlitchMode();
@@ -891,6 +923,7 @@ function activateThunderstormMode() {
 
     if (thunderstormTimer) clearInterval(thunderstormTimer);
     thunderstormTimer = setInterval(() => {
+        if (state !== "game") return;
         thunderstormTimeLeft--;
         if (thunderstormTimeLeft <= 0) {
             deactivateThunderstormMode();
@@ -978,6 +1011,7 @@ function activateUmbrellaMode() {
 
     if (umbrellaTimer) clearInterval(umbrellaTimer);
     umbrellaTimer = setInterval(() => {
+        if (state !== "game") return;
         umbrellaTimeLeft--;
         if (umbrellaTimeLeft <= 0) {
             deactivateUmbrellaMode();
@@ -1007,14 +1041,16 @@ function spawnGlitchPopup() {
 }
 
 function saveCollection() {
-    let toSaveItems = {}, toSaveSkins = {}, toSaveAchievements = {};
-    for (let key in itemsDB) toSaveItems[key] = itemsDB[key].unlocked;
-    for (let key in skinsDB) toSaveSkins[key] = skinsDB[key].unlocked;
-    for (let key in achievementsDB) toSaveAchievements[key] = achievementsDB[key].unlocked;
-    localStorage.setItem("catCollection", JSON.stringify(toSaveItems));
-    localStorage.setItem("catSkinsCollection", JSON.stringify(toSaveSkins));
-    localStorage.setItem("catCurrentSkin", currentSkin);
-    localStorage.setItem("catAchievementsCollection", JSON.stringify(toSaveAchievements));
+    try {
+        let toSaveItems = {}, toSaveSkins = {}, toSaveAchievements = {};
+        for (let key in itemsDB) toSaveItems[key] = itemsDB[key].unlocked;
+        for (let key in skinsDB) toSaveSkins[key] = skinsDB[key].unlocked;
+        for (let key in achievementsDB) toSaveAchievements[key] = achievementsDB[key].unlocked;
+        localStorage.setItem("catCollection", JSON.stringify(toSaveItems));
+        localStorage.setItem("catSkinsCollection", JSON.stringify(toSaveSkins));
+        localStorage.setItem("catCurrentSkin", currentSkin);
+        localStorage.setItem("catAchievementsCollection", JSON.stringify(toSaveAchievements));
+    } catch(e) {}
 }
 
 function startDevHold(e) {
@@ -1042,42 +1078,49 @@ canvas.addEventListener("touchend", cancelDevHold);
 canvas.addEventListener("touchcancel", cancelDevHold);
 
 function resize() {
-    W = window.innerWidth; H = window.innerHeight;
+    W = Math.max(1, window.innerWidth); H = Math.max(1, window.innerHeight);
     canvas.width = W * dpr; canvas.height = H * dpr;
     canvas.style.width = W + "px"; canvas.style.height = H + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    cat.x = W / 2; cat.y = H - 100;
     
-    petals = [];
-    for (let i = 0; i < 40; i++) {
-        petals.push({ 
-            x: Math.random() * W, 
-            y: Math.random() * H, 
-            speed: 0.8 + Math.random() * 1.2, 
-            size: 4 + Math.random() * 4, 
-            angle: Math.random() * Math.PI * 2, 
-            swing: Math.random() * 2,
-            color: ["#d95a2b", "#b83b1e", "#e88d3f", "#732c1c"][Math.floor(Math.random() * 4)]
-        });
+    if (state === "menu" || !isFinite(cat.x) || !isFinite(cat.y)) {
+        cat.x = W / 2; cat.y = H - 100;
     }
-    nyanStars = [];
-    for (let i = 0; i < 35; i++) {
-        nyanStars.push({ x: Math.random() * W, y: Math.random() * H, size: 3 + Math.random() * 5, speed: 4 + Math.random() * 6, color: ["#ff4545", "#ffa500", "#ffff00", "#00ff00", "#00ffff", "#ff69b4"][Math.floor(Math.random() * 6)] });
+    
+    if (petals.length === 0) {
+        for (let i = 0; i < 40; i++) {
+            petals.push({ 
+                x: Math.random() * W, 
+                y: Math.random() * H, 
+                speed: 0.8 + Math.random() * 1.2, 
+                size: 4 + Math.random() * 4, 
+                angle: Math.random() * Math.PI * 2, 
+                swing: Math.random() * 2,
+                color: ["#d95a2b", "#b83b1e", "#e88d3f", "#732c1c"][Math.floor(Math.random() * 4)]
+            });
+        }
     }
-    clouds = [];
-    for (let i = 0; i < 5; i++) {
-        clouds.push({
-            x: Math.random() * W,
-            y: Math.random() * (H * 0.4),
-            speed: 0.2 + Math.random() * 0.4,
-            r: 30 + Math.random() * 20
-        });
+    if (nyanStars.length === 0) {
+        for (let i = 0; i < 35; i++) {
+            nyanStars.push({ x: Math.random() * W, y: Math.random() * H, size: 3 + Math.random() * 5, speed: 4 + Math.random() * 6, color: ["#ff4545", "#ffa500", "#ffff00", "#00ff00", "#00ffff", "#ff69b4"][Math.floor(Math.random() * 6)] });
+        }
+    }
+    if (clouds.length === 0) {
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: Math.random() * W,
+                y: Math.random() * (H * 0.4),
+                speed: 0.2 + Math.random() * 0.4,
+                r: 30 + Math.random() * 20
+            });
+        }
     }
 }
 window.addEventListener("resize", resize);
 
 function wrapText(text, x, y, maxWidth, lineHeight) {
+    if (!text || typeof text !== 'string') return;
     const words = text.split(' ');
     let line = '';
     for (let n = 0; n < words.length; n++) {
@@ -1125,6 +1168,12 @@ function resetGame() {
 
     currentBgAudio = null;
     floatingTexts = [];
+    bullets = [];
+    lightningStrikes = [];
+    sparkParticles = [];
+    catTrail = [];
+    glitchPopups = [];
+    umbrellaPlatforms = [];
     if (isCyberMode) deactivateCyberMode();
     if (isTimeParadox) deactivateTimeParadox();
     if (isNyanMode) deactivateNyanMode();
@@ -1133,7 +1182,13 @@ function resetGame() {
     if (isUmbrellaMode) deactivateUmbrellaMode();
 }
 
-function resumeGame() { playSound(sndClick); state = "game"; pauseOverlay.style.display = "none"; updateModeMusic(); }
+function resumeGame() { 
+    playSound(sndClick); 
+    state = "game"; 
+    lastFrameTime = performance.now();
+    pauseOverlay.style.display = "none"; 
+    updateModeMusic(); 
+}
 
 function goToMenu() {
     playSound(sndClick); state = "menu"; pauseOverlay.style.display = "none";
@@ -1148,7 +1203,7 @@ function goToMenu() {
 }
 
 function spawnItemWave() {
-    if (isUmbrellaMode || level === 4 || bossCutscenePhase !== null) return;
+    if (isUmbrellaMode || level === 4 || bossCutscenePhase !== null || state !== "game") return;
 
     let badType = "bomb";
     let goodType = "star";
@@ -1213,41 +1268,34 @@ function startAction(clientX, clientY) {
     }
 
     if (bossCutscenePhase === 'dialog1' || bossCutscenePhase === 'dialog2') {
-        let boxW = Math.min(W - 32, 440);
-        let boxH = 145;
-        let boxX = (W - boxW) / 2;
-        let boxY = (bossCutscenePhase === 'dialog1') ? (H / 2 - boxH / 2) : (H * 0.52 - boxH / 2);
-
-        if (clientX >= boxX - 12 && clientX <= boxX + boxW + 12 && clientY >= boxY - 12 && clientY <= boxY + boxH + 12) {
-            playSound(sndTap);
-            if (bossCutscenePhase === 'dialog1') {
-                bossDialogIndex++;
-                if (bossDialogIndex >= dialog1Texts.length) {
-                    bossCutscenePhase = 'flash';
-                    flashAlpha = 1.0;
-                    bossCutsceneTimer = 65;
-                    playSound(sndTransition);
-                    level = 4;
-                    catDisappeared = false;
-                    cat.x = W / 2;
-                    cat.y = H - 100;
-                    lives = 3;
-                    bossHp = BOSS_MAX_HP;
-                    bossPhase = 1;
-                    bossGunCooldown = 120;
-                    playSound(sndExtraLife);
-                    spawnFloatingText(W / 2, H - 140, "❤️ 3/3 ХП ВОССТАНОВЛЕНО!", "#ff85a2");
-                }
-            } else if (bossCutscenePhase === 'dialog2') {
-                bossDialogIndex++;
-                if (bossDialogIndex >= dialog2Texts.length) {
-                    bossCutscenePhase = 'battle';
-                    lives = 3;
-                    bossGunCooldown = 120;
-                    updateModeMusic();
-                    phaseChangeBanner = { text: "ФАЗА 1: НАЧАЛО", timer: 100 };
-                    playSound(sndBoom);
-                }
+        playSound(sndTap);
+        if (bossCutscenePhase === 'dialog1') {
+            bossDialogIndex++;
+            if (bossDialogIndex >= dialog1Texts.length) {
+                bossCutscenePhase = 'flash';
+                flashAlpha = 1.0;
+                bossCutsceneTimer = 65;
+                playSound(sndTransition);
+                level = 4;
+                catDisappeared = false;
+                cat.x = W / 2;
+                cat.y = H - 100;
+                lives = 3;
+                bossHp = BOSS_MAX_HP;
+                bossPhase = 1;
+                bossGunCooldown = 120;
+                playSound(sndExtraLife);
+                spawnFloatingText(W / 2, H - 140, "❤️ 3/3 ХП ВОССТАНОВЛЕНО!", "#ff85a2");
+            }
+        } else if (bossCutscenePhase === 'dialog2') {
+            bossDialogIndex++;
+            if (bossDialogIndex >= dialog2Texts.length) {
+                bossCutscenePhase = 'battle';
+                lives = 3;
+                bossGunCooldown = 120;
+                updateModeMusic();
+                phaseChangeBanner = { text: "ФАЗА 1: НАЧАЛО", timer: 100 };
+                playSound(sndBoom);
             }
         }
         return;
@@ -1273,7 +1321,7 @@ function startAction(clientX, clientY) {
         if (dist < 25) { 
             playSound(sndClick); 
             state = "pause"; 
-            if (currentBgAudio) currentBgAudio.pause();
+            if (currentBgAudio) { try { currentBgAudio.pause(); } catch(e){} }
             pauseOverlay.style.display = "flex"; 
             return; 
         }
@@ -1410,26 +1458,31 @@ function startAction(clientX, clientY) {
     }
 }
 
-canvas.addEventListener("touchstart", e => { e.preventDefault(); startAction(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+canvas.addEventListener("touchstart", e => { 
+    e.preventDefault(); 
+    if (e.touches && e.touches[0]) startAction(e.touches[0].clientX, e.touches[0].clientY); 
+}, { passive: false });
+
 canvas.addEventListener("touchmove", e => { 
     e.preventDefault(); 
     if (bossCutscenePhase && bossCutscenePhase !== 'battle') return;
-    if (isDragging && state === "game") { 
+    if (isDragging && state === "game" && e.touches && e.touches[0]) { 
         let speedMult = (coffeeTimer > 0) ? 1.6 : 1.0;
         if (jamTimer > 0) speedMult *= 0.5;
 
         if (isNyanMode) {
             let deltaY = (e.touches[0].clientY - lastY) * speedMult;
-            cat.y += deltaY;
+            if (isFinite(deltaY)) cat.y += deltaY;
             let margin = (cat.h * cat.scale) / 2;
             cat.y = Math.max(margin, Math.min(H - margin, cat.y));
         } else if (jumpLock <= 0) {
             let deltaX = (e.touches[0].clientX - lastX) * speedMult;
             if (isTimeParadox) deltaX *= 0.3; 
+            if (!isFinite(deltaX)) deltaX = 0;
             
             let newCatX = cat.x + deltaX;
             
-            if (activePumpkin) {
+            if (activePumpkin && activePumpkin.opacity > 0) {
                 let catHalfW = (cat.w * cat.scale) / 2;
                 let pLeft = activePumpkin.x - activePumpkin.width / 2;
                 let pRight = activePumpkin.x + activePumpkin.width / 2;
@@ -1439,11 +1492,12 @@ canvas.addEventListener("touchmove", e => {
                 }
             }
 
-            cat.x = newCatX; 
+            if (isFinite(newCatX)) cat.x = newCatX; 
         }
         lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; 
     } 
 }, { passive: false });
+
 canvas.addEventListener("touchend", () => isDragging = false);
 canvas.addEventListener("mousedown", e => startAction(e.clientX, e.clientY));
 canvas.addEventListener("mousemove", e => {
@@ -1454,16 +1508,17 @@ canvas.addEventListener("mousemove", e => {
 
         if (isNyanMode) {
             let deltaY = (e.clientY - lastY) * speedMult;
-            cat.y += deltaY;
+            if (isFinite(deltaY)) cat.y += deltaY;
             let margin = (cat.h * cat.scale) / 2;
             cat.y = Math.max(margin, Math.min(H - margin, cat.y));
         } else if (jumpLock <= 0) {
             let deltaX = (e.clientX - lastX) * speedMult;
             if (isTimeParadox) deltaX *= 0.3;
+            if (!isFinite(deltaX)) deltaX = 0;
 
             let newCatX = cat.x + deltaX;
 
-            if (activePumpkin) {
+            if (activePumpkin && activePumpkin.opacity > 0) {
                 let catHalfW = (cat.w * cat.scale) / 2;
                 let pLeft = activePumpkin.x - activePumpkin.width / 2;
                 let pRight = activePumpkin.x + activePumpkin.width / 2;
@@ -1473,7 +1528,7 @@ canvas.addEventListener("mousemove", e => {
                 }
             }
 
-            cat.x = newCatX;
+            if (isFinite(newCatX)) cat.x = newCatX;
         }
         lastX = e.clientX;
         lastY = e.clientY;
@@ -1482,15 +1537,17 @@ canvas.addEventListener("mousemove", e => {
 window.addEventListener("mouseup", () => isDragging = false);
 
 function drawBtn(x, y, text, color, w = 160, h = 40, fontSize = 20) {
+    if (!text) return;
     let baseFSize = fontSize;
     ctx.font = baseFSize + "px 'ouroboros', sans-serif";
-    let textW = ctx.measureText(text).width;
+    let textW = ctx.measureText(text).width || 0;
     let actualW = Math.max(w, textW + 24);
     ctx.fillStyle = color;
     ctx.fillRect(x - actualW / 2, y - h / 2, actualW, h);
     ctx.fillStyle = "white";
     ctx.textAlign = "center";
-    while (ctx.measureText(text).width > actualW - 14 && baseFSize > 10) {
+    let maxIter = 20;
+    while (ctx.measureText(text).width > actualW - 14 && baseFSize > 10 && maxIter-- > 0) {
         baseFSize--;
         ctx.font = baseFSize + "px 'ouroboros', sans-serif";
     }
@@ -1503,11 +1560,13 @@ function drawPetals() {
             if (loadedImages['cloud']) {
                 let img = images['cloud'];
                 let drawW = c.r * 3; 
-                let drawH = drawW * (img.height / img.width);
-                ctx.save();
-                ctx.globalAlpha = 0.8;
-                ctx.drawImage(img, c.x, c.y - drawH / 2, drawW, drawH);
-                ctx.restore();
+                let drawH = (img.width > 0) ? (drawW * (img.height / img.width)) : c.r * 1.5;
+                if (isFinite(drawW) && isFinite(drawH) && drawW > 0 && drawH > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.8;
+                    ctx.drawImage(img, c.x, c.y - drawH / 2, drawW, drawH);
+                    ctx.restore();
+                }
             } else {
                 ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
                 ctx.beginPath();
@@ -1533,8 +1592,10 @@ function drawPetals() {
         if (loadedImages['snowdrifts']) {
             let img = images['snowdrifts'];
             let drawW = W;
-            let drawH = W * (img.height / img.width);
-            ctx.drawImage(img, 0, H - drawH, drawW, drawH);
+            let drawH = (img.width > 0) ? (W * (img.height / img.width)) : 40;
+            if (isFinite(drawW) && isFinite(drawH) && drawW > 0 && drawH > 0) {
+                ctx.drawImage(img, 0, H - drawH, drawW, drawH);
+            }
         } else {
             ctx.fillStyle = "rgba(230, 240, 255, 0.9)";
             ctx.beginPath();
@@ -1585,7 +1646,7 @@ function drawPetals() {
             ctx.translate(p.x, p.y); 
             ctx.rotate(p.angle);
             ctx.beginPath(); 
-            ctx.ellipse(0, 0, p.size, p.size / 2, 0, 0, Math.PI * 2); 
+            ctx.ellipse(0, 0, Math.max(1, p.size), Math.max(1, p.size / 2), 0, 0, Math.PI * 2); 
             ctx.fill();
             ctx.restore();
             
@@ -1598,7 +1659,7 @@ function drawPetals() {
 }
 
 function handleItemPickup(item, source) {
-    if (!itemsDB[item.type]) return;
+    if (!item || !itemsDB[item.type]) return;
     if (!itemsDB[item.type].unlocked) { 
         itemsDB[item.type].unlocked = true; 
         saveCollection(); 
@@ -1884,7 +1945,11 @@ function handleItemPickup(item, source) {
         playSound(collectSound);
         score += 5 * mult * appleMult;
         spawnFloatingText(item.x, item.y, "Clean!", "#a8e6cf");
-        items = items.filter(it => it.type !== "fire" && it.type !== "bomb");
+        for (let j = 0; j < items.length; j++) {
+            if (items[j] !== item && (items[j].type === "fire" || items[j].type === "bomb")) {
+                items[j].toRemove = true;
+            }
+        }
     }
     else if (item.type === "gift") {
         playSound(collectSound);
@@ -1927,10 +1992,10 @@ function handleItemPickup(item, source) {
         score += 4 * mult * appleMult;
         spawnFloatingText(item.x, item.y, "+" + (4 * mult * appleMult), "#a8e6cf");
         spawnFloatingText(cat.x, cat.y - 20, "clean!", "#ff85a2");
-        for (let j = items.length - 1; j >= 0; j--) {
-            if (items[j].type === "bomb" || items[j].type === "fire" || items[j].type === "knife" || items[j].type === "cucumber" || items[j].type === "snowflake") {
+        for (let j = 0; j < items.length; j++) {
+            if (items[j] !== item && (items[j].type === "bomb" || items[j].type === "fire" || items[j].type === "knife" || items[j].type === "cucumber" || items[j].type === "snowflake")) {
                 spawnSparks(items[j].x, items[j].y, "#ff85a2", 5);
-                items.splice(j, 1);
+                items[j].toRemove = true;
             }
         }
     }
@@ -1984,6 +2049,7 @@ function handleItemPickup(item, source) {
 }
 
 function drawBossDialog(text) {
+    if (!text || typeof text !== 'string') return;
     let boxW = Math.min(W - 32, 440);
     let boxH = 150;
     let boxX = (W - boxW) / 2;
@@ -2213,7 +2279,7 @@ function renderGame(isUpdating) {
                 activePumpkin.holdTimer -= dt;
             } else if (activePumpkin.opacity > 0) {
                 activePumpkin.opacity -= 0.02 * dt;
-                if (activePumpkin.opacity <= 0) activePumpkin.x = -9999;
+                if (activePumpkin.opacity <= 0) activePumpkin = null;
             } else {
                 activePumpkin = null;
             }
@@ -2221,9 +2287,15 @@ function renderGame(isUpdating) {
 
         if (activePumpkin && loadedImages['pumpkin']) {
             ctx.save();
-            ctx.globalAlpha = activePumpkin.opacity;
+            ctx.globalAlpha = Math.max(0, Math.min(1, activePumpkin.opacity || 0));
             let img = images['pumpkin'];
-            ctx.drawImage(img, activePumpkin.x - 25, activePumpkin.y - 25, 50, 50);
+            let pw = 50, ph = 50;
+            if (img.width && img.height) {
+                let asp = img.width / img.height;
+                if (asp > 1) { pw = 50; ph = 50 / asp; }
+                else { ph = 50; pw = 50 * asp; }
+            }
+            ctx.drawImage(img, activePumpkin.x - pw / 2, activePumpkin.y - ph / 2, pw, ph);
             ctx.restore();
         }
     }
@@ -2231,6 +2303,10 @@ function renderGame(isUpdating) {
     // пульки в кибере
     for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
         let b = bullets[bIndex];
+        if (!isFinite(b.x) || !isFinite(b.y)) {
+            bullets.splice(bIndex, 1);
+            continue;
+        }
         if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle')) {
             let bulletSpeedMult = (isTimeParadox ? 0.3 : 1.0) * dt;
             b.x += (b.vx || 0) * bulletSpeedMult;
@@ -2239,7 +2315,7 @@ function renderGame(isUpdating) {
 
         ctx.save();
         ctx.fillStyle = "#ffed00"; ctx.shadowColor = "#ff5476"; ctx.shadowBlur = 8;
-        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(b.x, b.y, Math.max(1, b.radius || 4), 0, Math.PI * 2); ctx.fill();
         ctx.restore();
 
         if (isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle')) {
@@ -2256,9 +2332,10 @@ function renderGame(isUpdating) {
             } else {
                 for (let i = items.length - 1; i >= 0; i--) {
                     let item = items[i];
+                    if (item.toRemove) continue;
                     if (Math.hypot(b.x - item.x, b.y - item.y) < 25) {
                         handleItemPickup(item, "bullet");
-                        items.splice(i, 1);
+                        item.toRemove = true;
                         bullets.splice(bIndex, 1);
                         break;
                     }
@@ -2305,12 +2382,13 @@ function renderGame(isUpdating) {
                 cat.y = scrollThreshold;
 
                 umbrellaPlatforms.forEach(p => { p.y += diffY; });
-                items.forEach(it => { it.y += diffY; });
+                items.forEach(it => { if (it.shelf) it.y += diffY; });
 
                 umbrellaPlatforms = umbrellaPlatforms.filter(p => p.y < H + 60);
 
                 let topY = umbrellaPlatforms.length > 0 ? Math.min(...umbrellaPlatforms.map(p => p.y)) : 0;
-                while (topY > -60) {
+                let maxNewPlatforms = 10;
+                while (topY > -60 && maxNewPlatforms-- > 0) {
                     topY -= (70 + Math.random() * 25);
                     let newShelfW = 75 + Math.random() * 25;
                     let newShelfX = Math.random() * (W - newShelfW - 40) + newShelfW / 2 + 20;
@@ -2359,7 +2437,7 @@ function renderGame(isUpdating) {
             ctx.stroke();
 
             ctx.fillStyle = "rgba(255, 235, 200, 0.45)";
-            ctx.fillRect(left + 4, drawY + 1.5, p.w - 8, 2.5);
+            ctx.fillRect(left + 4, drawY + 1.5, Math.max(0, p.w - 8), 2.5);
 
             ctx.fillStyle = "#5a2d0c";
             ctx.fillRect(left + 6, drawY + p.h - 1, 4, 3);
@@ -2379,6 +2457,9 @@ function renderGame(isUpdating) {
 
     // где кот
     if (!catDisappeared) {
+        if (!isFinite(cat.x)) cat.x = W / 2;
+        if (!isFinite(cat.y)) cat.y = H - 100;
+
         if (isNyanMode) {
             let marginY = (cat.h * cat.scale) / 2;
             cat.y = Math.max(marginY, Math.min(H - marginY, cat.y));
@@ -2403,13 +2484,17 @@ function renderGame(isUpdating) {
         }
 
         if (loadedImages[skinToDraw]) {
-            let img = images[skinToDraw], baseH = cat.h * cat.scale, aspect = img.width / img.height;
+            let img = images[skinToDraw];
+            let baseH = cat.h * cat.scale;
+            let aspect = (img.width && img.height) ? (img.width / img.height) : 1;
+            if (!isFinite(aspect) || aspect <= 0) aspect = 1;
             let drawH = baseH, drawW = baseH * aspect;
             
             if (hasShield) {
+                let shieldR = Math.max(1, drawW / 1.5);
                 ctx.save();
                 ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 3; ctx.shadowColor = "#00ffff"; ctx.shadowBlur = 10;
-                ctx.beginPath(); ctx.arc(cat.x, cat.y, drawW / 1.5, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(cat.x, cat.y, shieldR, 0, Math.PI * 2); ctx.stroke();
                 ctx.restore();
             }
 
@@ -2423,7 +2508,9 @@ function renderGame(isUpdating) {
                 ctx.shadowBlur = 24; 
             }
             
-            ctx.drawImage(img, cat.x - drawW / 2, cat.y - drawH / 2, drawW, drawH);
+            if (isFinite(drawW) && isFinite(drawH) && drawW > 0 && drawH > 0) {
+                ctx.drawImage(img, cat.x - drawW / 2, cat.y - drawH / 2, drawW, drawH);
+            }
 
             if (isUmbrellaMode && loadedImages['umbrella']) {
                 let umbImg = images['umbrella'];
@@ -2448,8 +2535,10 @@ function renderGame(isUpdating) {
                 ctx.lineWidth = 3.5;
                 ctx.shadowColor = "#ffed00";
                 ctx.shadowBlur = 16;
+                let rx = Math.max(1, drawW * 0.65);
+                let ry = Math.max(1, drawH * 0.65);
                 ctx.beginPath();
-                ctx.ellipse(cat.x, cat.y, drawW * 0.65, drawH * 0.65, 0, 0, Math.PI * 2);
+                ctx.ellipse(cat.x, cat.y, rx, ry, 0, 0, Math.PI * 2);
                 ctx.stroke();
             }
             ctx.restore();
@@ -2466,7 +2555,7 @@ function renderGame(isUpdating) {
         if (isUpdating) t.alpha -= 0.05 * dt;
         if (t.alpha <= 0) { catTrail.splice(i, 1); continue; }
         ctx.save();
-        ctx.globalAlpha = t.alpha;
+        ctx.globalAlpha = Math.max(0, Math.min(1, t.alpha));
         ctx.fillStyle = t.color;
         ctx.beginPath();
         ctx.arc(t.x, t.y, 6, 0, Math.PI * 2);
@@ -2491,12 +2580,15 @@ function renderGame(isUpdating) {
         if (loadedImages['boss']) {
             let bImg = images['boss'];
             let aspect = (bImg.width && bImg.height) ? (bImg.width / bImg.height) : 1;
+            if (!isFinite(aspect) || aspect <= 0) aspect = 1;
             if (aspect > 1) {
                 bW = 160; bH = 160 / aspect;
             } else {
                 bH = 160; bW = 160 * aspect;
             }
-            ctx.drawImage(bImg, bX - bW / 2, bY - bH / 2, bW, bH);
+            if (isFinite(bW) && isFinite(bH) && bW > 0 && bH > 0) {
+                ctx.drawImage(bImg, bX - bW / 2, bY - bH / 2, bW, bH);
+            }
         } else {
             ctx.fillStyle = (bossHitFlashTimer > 0) ? "#ff3333" : "#ff0055";
             ctx.beginPath();
@@ -2514,7 +2606,7 @@ function renderGame(isUpdating) {
             const barH = 16;
             const barX = (W - barW) / 2;
             const barY = 62;
-            const hpRatio = Math.max(0, bossHp / BOSS_MAX_HP);
+            const hpRatio = Math.max(0, Math.min(1, bossHp / BOSS_MAX_HP));
 
             ctx.save();
             ctx.fillStyle = "rgba(10, 5, 20, 0.85)";
@@ -2538,9 +2630,10 @@ function renderGame(isUpdating) {
                 hpGrad.addColorStop(1, "#990022");
             }
             ctx.fillStyle = hpGrad;
+            let fillW = Math.max(0, (barW - 4) * hpRatio);
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(barX + 2, barY + 2, Math.max(0, (barW - 4) * hpRatio), barH - 4, 6);
-            else ctx.rect(barX + 2, barY + 2, Math.max(0, (barW - 4) * hpRatio), barH - 4);
+            if (ctx.roundRect) ctx.roundRect(barX + 2, barY + 2, fillW, barH - 4, 6);
+            else ctx.rect(barX + 2, barY + 2, fillW, barH - 4);
             ctx.fill();
 
             ctx.fillStyle = "#ffffff";
@@ -2560,7 +2653,6 @@ function renderGame(isUpdating) {
 
     if (phaseChangeBanner) {
         ctx.save();
-        let pulse = 0.7 + 0.3 * Math.sin(Date.now() / 80);
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
         ctx.fillRect(0, H * 0.44 - 30, W, 60);
         ctx.fillStyle = "#ffed00";
@@ -2574,15 +2666,19 @@ function renderGame(isUpdating) {
 
     for (let i = sparkParticles.length - 1; i >= 0; i--) {
         let p = sparkParticles[i];
+        if (!isFinite(p.x) || !isFinite(p.y)) {
+            sparkParticles.splice(i, 1);
+            continue;
+        }
         if (isUpdating) {
             p.x += p.vx * dt; p.y += p.vy * dt;
             p.alpha -= 0.035 * dt;
         }
         if (p.alpha <= 0) { sparkParticles.splice(i, 1); continue; }
         ctx.save();
-        ctx.globalAlpha = p.alpha;
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha));
         ctx.fillStyle = p.color;
-        ctx.fillRect(p.x, p.y, p.size, p.size);
+        ctx.fillRect(p.x, p.y, Math.max(1, p.size), Math.max(1, p.size));
         ctx.restore();
     }
 
@@ -2748,6 +2844,14 @@ function renderGame(isUpdating) {
     let canUpdateItems = isUpdating && (!bossCutscenePhase || bossCutscenePhase === 'battle');
     for (let i = items.length - 1; i >= 0; i--) {
         let item = items[i];
+        if (!item || !isFinite(item.x) || !isFinite(item.y)) {
+            items.splice(i, 1);
+            continue;
+        }
+        if (item.toRemove) {
+            items.splice(i, 1);
+            continue;
+        }
         if (canUpdateItems) {
             if (item.shelf) {
                 item.x = item.shelf.x + item.shelfOffsetX;
@@ -2845,15 +2949,19 @@ function renderGame(isUpdating) {
             }
         }
         if (loadedImages[drawKey]) {
-            let img = images[drawKey], aspect = img.width / img.height;
+            let img = images[drawKey];
+            let aspect = (img.width && img.height) ? (img.width / img.height) : 1;
+            if (!isFinite(aspect) || aspect <= 0) aspect = 1;
             let drawW = (aspect > 1) ? baseSize : baseSize * aspect;
             let drawH = (aspect > 1) ? baseSize / aspect : baseSize;
-            ctx.drawImage(img, item.x - drawW/2, item.y - drawH/2, drawW, drawH);
+            if (isFinite(drawW) && isFinite(drawH) && drawW > 0 && drawH > 0) {
+                ctx.drawImage(img, item.x - drawW/2, item.y - drawH/2, drawW, drawH);
+            }
         }
         ctx.filter = "none";
         ctx.restore();
 
-        if (canUpdateItems && !catDisappeared) {
+        if (canUpdateItems && !catDisappeared && !item.toRemove) {
             let distCat = Math.hypot(item.x - cat.x, item.y - (cat.y - 10));
             if (distCat < 45) {
                 handleItemPickup(item, "cat");
@@ -2917,7 +3025,7 @@ function renderGame(isUpdating) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
         ctx.fillRect(barX, barY, barW, barH);
         ctx.fillStyle = "#ffed00";
-        ctx.fillRect(barX, barY, barW * Math.min(1, progress), barH);
+        ctx.fillRect(barX, barY, barW * Math.min(1, Math.max(0, progress)), barH);
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 1;
         ctx.strokeRect(barX, barY, barW, barH);
@@ -2970,7 +3078,7 @@ function renderGame(isUpdating) {
 
     floatingTexts.forEach(ft => {
         ctx.save();
-        ctx.globalAlpha = Math.max(0, ft.alpha);
+        ctx.globalAlpha = Math.max(0, Math.min(1, ft.alpha));
         ctx.fillStyle = ft.color;
         ctx.shadowColor = "#000000";
         ctx.shadowBlur = 4;
@@ -2997,7 +3105,9 @@ function renderGame(isUpdating) {
     ctx.fillText("🪙" + coins, 20, 90);
     ctx.textAlign = "right"; ctx.fillText("🏆 " + highScore, W - 20, 40);
     ctx.textAlign = "center"; ctx.fillStyle = "#FFEEC0";
-    ctx.fillText(levelSettings[level].title.toUpperCase(), W / 2, 40);
+    if (levelSettings[level]) {
+        ctx.fillText(levelSettings[level].title.toUpperCase(), W / 2, 40);
+    }
     
     if (freezeIntensity > 0) {
         ctx.save();
@@ -3032,9 +3142,13 @@ function renderGame(isUpdating) {
     }
 
     if (bossCutscenePhase === 'dialog1') {
-        drawBossDialog(dialog1Texts[bossDialogIndex]);
+        if (bossDialogIndex < dialog1Texts.length) {
+            drawBossDialog(dialog1Texts[bossDialogIndex]);
+        }
     } else if (bossCutscenePhase === 'dialog2') {
-        drawBossDialog(dialog2Texts[bossDialogIndex]);
+        if (bossDialogIndex < dialog2Texts.length) {
+            drawBossDialog(dialog2Texts[bossDialogIndex]);
+        }
     }
 }
 
@@ -3060,6 +3174,7 @@ function drawPauseBtn() {
 }
 
 function getEncryptedText(text) {
+    if (!text || typeof text !== 'string') return "???";
     const symbols = "{}$°+₽*\\£%#@!?&~<>";
     let result = "";
     for (let i = 0; i < text.length; i++) {
@@ -3076,6 +3191,7 @@ function drawShop() {
     ctx.fillText("Твой баланс: 🪙 " + coins, W / 2, 95);
 
     boxScale += (1.0 - boxScale) * (0.2 * dt);
+    if (!isFinite(boxScale) || isNaN(boxScale)) boxScale = 1.0;
     let baseSize = 120, drawSize = baseSize * boxScale, boxX = W / 2, boxY = H / 2 - 20;
 
     if (isOpeningBox) {
@@ -3175,11 +3291,11 @@ function drawCollection() {
 
         ctx.fillStyle = (collectionPage === 2) ? "#ff85a2" : "#777";
         ctx.fillRect(W / 2 - 16, 95, 32, 22);
-        ctx.fillStyle = "white"; ctx.fillText("2", W / 2, 110);
+        ctx.fillStyle = "white"; ctx.font = "12px 'ouroboros'"; ctx.fillText("2", W / 2, 110);
 
         ctx.fillStyle = (collectionPage === 3) ? "#ff85a2" : "#777";
         ctx.fillRect(W / 2 + 28, 95, 32, 22);
-        ctx.fillStyle = "white"; ctx.fillText("3", W / 2 + 44, 110);
+        ctx.fillStyle = "white"; ctx.font = "12px 'ouroboros'"; ctx.fillText("3", W / 2 + 44, 110);
     } else if (totalPages === 2) {
         ctx.fillStyle = (collectionPage === 1) ? "#ff85a2" : "#777";
         ctx.fillRect(W / 2 - 50, 95, 35, 22);
@@ -3187,7 +3303,7 @@ function drawCollection() {
 
         ctx.fillStyle = (collectionPage === 2) ? "#ff85a2" : "#777";
         ctx.fillRect(W / 2 + 15, 95, 35, 22);
-        ctx.fillStyle = "white"; ctx.fillText("2", W / 2 + 32, 110);
+        ctx.fillStyle = "white"; ctx.font = "12px 'ouroboros'"; ctx.fillText("2", W / 2 + 32, 110);
     }
 
     const pageSize = 16;
@@ -3208,10 +3324,14 @@ function drawCollection() {
             ctx.fillText(itemData.unlocked ? "🏆" : "🔒", x + size/2, y + size/2 + 7);
         } 
         else if (itemData.unlocked && loadedImages[key]) {
-            let img = images[key], aspect = img.width / img.height;
+            let img = images[key];
+            let aspect = (img.width && img.height) ? (img.width / img.height) : 1;
+            if (!isFinite(aspect) || aspect <= 0) aspect = 1;
             let drawW = (aspect > 1) ? size : size * aspect;
             let drawH = (aspect > 1) ? size / aspect : size;
-            ctx.drawImage(img, x + (size - drawW)/2, y + (size - drawH)/2, drawW, drawH);
+            if (isFinite(drawW) && isFinite(drawH) && drawW > 0 && drawH > 0) {
+                ctx.drawImage(img, x + (size - drawW)/2, y + (size - drawH)/2, drawW, drawH);
+            }
         } else {
             ctx.fillStyle = "rgba(0,0,0,0.5)"; 
             ctx.beginPath(); ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2); ctx.fill();
@@ -3284,9 +3404,9 @@ function drawVictory() {
         p.alpha -= 0.015 * dt;
         if (p.alpha <= 0 || p.y > H + 20) { sparkParticles.splice(i, 1); continue; }
         ctx.save();
-        ctx.globalAlpha = p.alpha;
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha));
         ctx.fillStyle = p.color;
-        ctx.fillRect(p.x, p.y, p.size, p.size);
+        ctx.fillRect(p.x, p.y, Math.max(1, p.size), Math.max(1, p.size));
         ctx.restore();
     }
 
@@ -3322,57 +3442,65 @@ function drawVictory() {
 }
 
 function loop(timestamp) {
-    if (!lastFrameTime) lastFrameTime = timestamp || performance.now();
-    let now = timestamp || performance.now();
-    let elapsed = now - lastFrameTime;
-    lastFrameTime = now;
+    try {
+        requestAnimationFrame(loop);
+    } catch(e) {}
 
-    if (elapsed < 1) elapsed = 1;
-    if (elapsed > 100) elapsed = 16.667;
+    try {
+        if (!lastFrameTime) lastFrameTime = timestamp || performance.now();
+        let now = timestamp || performance.now();
+        let elapsed = now - lastFrameTime;
+        lastFrameTime = now;
 
-    dt = elapsed / (1000 / 60);
+        if (elapsed < 1 || isNaN(elapsed)) elapsed = 16.667;
+        if (elapsed > 100) elapsed = 16.667;
 
-    ctx.clearRect(0, 0, W, H);
-    let grad = ctx.createLinearGradient(0, 0, 0, H);
+        dt = elapsed / (1000 / 60);
+        if (!isFinite(dt) || dt <= 0 || isNaN(dt)) dt = 1.0;
 
-    if (level === 4) {
-        drawBossBackground();
-    } else if (isNyanMode) {
-        drawNyanBackground();
-    } else if (isGlitchMode) {
-        grad.addColorStop(0, "#2b0000"); grad.addColorStop(1, "#002b2b");
-        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
-        ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.lineWidth = 2;
-        let shift = (Math.random() - 0.5) * 10;
-        for (let y = 0; y < H; y += 20) { ctx.beginPath(); ctx.moveTo(0, y + shift); ctx.lineTo(W, y + shift); ctx.stroke(); }
-    } else if (isCyberMode) {
-        grad.addColorStop(0, "#0d0221"); grad.addColorStop(1, "#261447");
-        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
-        ctx.strokeStyle = "rgba(255, 0, 127, 0.15)"; ctx.lineWidth = 1;
-        for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-        for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-    } else if (level === 2) {
-        grad.addColorStop(0, "#1c3b57"); grad.addColorStop(1, "#404b56");
-        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
-    } else if (level === 3) {
-        drawAutumnBackground();
-    } else {
-        grad.addColorStop(0, "#a8e6cf"); grad.addColorStop(1, "#ffd3b6");
-        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);   
+        ctx.clearRect(0, 0, W, H);
+        let grad = ctx.createLinearGradient(0, 0, 0, H);
+
+        if (level === 4) {
+            drawBossBackground();
+        } else if (isNyanMode) {
+            drawNyanBackground();
+        } else if (isGlitchMode) {
+            grad.addColorStop(0, "#2b0000"); grad.addColorStop(1, "#002b2b");
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+            ctx.strokeStyle = "rgba(0, 255, 255, 0.2)"; ctx.lineWidth = 2;
+            let shift = (Math.random() - 0.5) * 10;
+            for (let y = 0; y < H; y += 20) { ctx.beginPath(); ctx.moveTo(0, y + shift); ctx.lineTo(W, y + shift); ctx.stroke(); }
+        } else if (isCyberMode) {
+            grad.addColorStop(0, "#0d0221"); grad.addColorStop(1, "#261447");
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+            ctx.strokeStyle = "rgba(255, 0, 127, 0.15)"; ctx.lineWidth = 1;
+            for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+            for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+        } else if (level === 2) {
+            grad.addColorStop(0, "#1c3b57"); grad.addColorStop(1, "#404b56");
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+        } else if (level === 3) {
+            drawAutumnBackground();
+        } else {
+            grad.addColorStop(0, "#a8e6cf"); grad.addColorStop(1, "#ffd3b6");
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);   
+        }
+        
+        if (!isCyberMode && !isNyanMode && level !== 4) drawPetals();
+
+        if (state === "menu") drawMenu();
+        else if (state === "collection") drawCollection();
+        else if (state === "shop") drawShop();
+        else if (state === "game") { renderGame(true); drawPauseBtn(); }
+        else if (state === "pause") renderGame(false);
+        else if (state === "gameover") drawGameOver();
+        else if (state === "victory") drawVictory();
+
+        drawAchievementNotification();
+    } catch (err) {
+        console.error("Game loop error:", err);
     }
-    
-    if (!isCyberMode && !isNyanMode && level !== 4) drawPetals();
-
-    if (state === "menu") drawMenu();
-    else if (state === "collection") drawCollection();
-    else if (state === "shop") drawShop();
-    else if (state === "game") { renderGame(true); drawPauseBtn(); }
-    else if (state === "pause") renderGame(false);
-    else if (state === "gameover") drawGameOver();
-    else if (state === "victory") drawVictory();
-
-    drawAchievementNotification();
-    requestAnimationFrame(loop);
 }
 
 resize();
